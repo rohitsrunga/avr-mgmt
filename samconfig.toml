@@ -1,0 +1,14 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "avr-mgmt"
+region = "us-east-1"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+resolve_s3 = true
+s3_prefix = "avr-mgmt"
+disable_rollback = false
+
+[default.build.parameters]
+cached = true
+parallel = true

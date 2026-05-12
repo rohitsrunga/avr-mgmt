@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+  }
+  body {
+    background: #0c1017;
+    color: #e2e8f0;
+    -webkit-tap-highlight-color: transparent;
+  }
+  h1, h2, h3, h4 {
+    font-family: 'Fraunces', serif;
+    letter-spacing: -0.01em;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #0f1520;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #1e2a3a;
+    border-radius: 4px;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-md font-medium transition-colors min-h-[44px];
+  }
+  .btn-primary {
+    @apply btn bg-accent-teal text-white hover:bg-emerald-700 disabled:opacity-50;
+  }
+  .btn-secondary {
+    @apply btn bg-ink-700 text-text-primary hover:bg-ink-600;
+  }
+  .btn-danger {
+    @apply btn bg-accent-red text-white hover:bg-red-600;
+  }
+  .card {
+    @apply bg-ink-800 border border-ink-700 rounded-xl p-5;
+  }
+  .input {
+    @apply w-full bg-ink-900 border border-ink-700 rounded-md px-3 py-2 text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent-teal min-h-[44px];
+  }
+  .label {
+    @apply block text-xs uppercase tracking-wider text-text-secondary font-mono mb-1;
+  }
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-mono uppercase tracking-wider;
+  }
+  .tag {
+    @apply font-mono text-xs uppercase tracking-wider text-text-secondary;
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}

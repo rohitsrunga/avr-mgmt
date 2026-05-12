@@ -216,3 +216,37 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# === avr-mgmt additions ===
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# AWS SAM
+.aws-sam/
+samconfig.local.toml
+
+# Cloudflare / Wrangler
+.wrangler/
+
+# Vite build output (already covered by dist/, but explicit)
+frontend/dist/
+
+# Env files (Vite + general)
+.env.local
+.env.*.local
+frontend/.env
+frontend/.env.local
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+
+# Secrets / certs that may accidentally end up here
+*.pem
+*.key
