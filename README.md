@@ -1,6 +1,6 @@
 # AVR Management — Hotel Operations Platform
 
-Internal serverless web app for AVR Management. Replaces paper-and-pen operations across two properties (Casco Bay Hotel, Saco Bay Hotel) with a mobile-first React + AWS app, plus a tiny separately-hosted bundle of public static HTML forms on S3 for guest/staff input.
+Internal serverless web app for AVR Management. Replaces paper-and-pen operations across two properties (Casco Bay Hotel, Saco Bay Hotel) with a mobile-first React + AWS app, plus a tiny separately-hosted bundle of public static HTML forms on S3 for guest/staff input. 
 
 ## Architecture
 - **Frontend** (auth'd SPA): React 18 + Vite + Tailwind, deployed to S3 + CloudFront (or Cloudflare Pages)
