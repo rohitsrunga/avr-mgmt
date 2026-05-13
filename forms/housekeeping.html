@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f5f5f7" />
+  <title>Housekeeping · AVR Hotels</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="brand">
+      <div class="mark">A</div>
+      <div class="meta">
+        <div class="name" id="property-name">AVR Hotels</div>
+        <div class="sub">Housekeeping</div>
+      </div>
+    </header>
+
+    <h1 class="page-title">Today's rooms</h1>
+    <p class="page-subtitle" id="page-sub">Tap your name to see your rooms.</p>
+
+    <div id="banner-error" class="banner error hidden"></div>
+
+    <!-- Step 1: choose housekeeper -->
+    <div id="pick" class="card">
+      <h2 class="section-title">Who's working?</h2>
+      <div class="field">
+        <label for="housekeeper-select">Your name</label>
+        <select id="housekeeper-select">
+          <option value="">Loading…</option>
+        </select>
+      </div>
+      <button class="btn primary block" id="pick-btn" disabled>See my rooms</button>
+    </div>
+
+    <!-- Step 2: room list -->
+    <div id="rooms" class="hidden">
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+          <div style="flex:1;">
+            <div style="font-size:13px;color:var(--ink-muted);">Signed in as</div>
+            <div id="who" style="font-size:17px;font-weight:600;letter-spacing:-0.012em;"></div>
+          </div>
+          <button class="btn secondary" id="switch-btn">Switch</button>
+        </div>
+        <div class="progress">
+          <span id="progress-text" style="font-variant-numeric:tabular-nums;">0 of 0</span>
+          <div class="bar"><div id="progress-bar" style="width:0%"></div></div>
+          <span id="progress-pct" style="font-variant-numeric:tabular-nums;width:36px;text-align:right;">0%</span>
+        </div>
+        <div id="room-list" class="room-list"></div>
+        <div id="empty" class="muted hidden" style="text-align:center;padding:24px 0;">No rooms assigned yet.</div>
+      </div>
+    </div>
+
+    <footer class="foot">AVR Hospitality Management</footer>
+  </div>
+
+  <script>
+    window.__API_BASE = window.__API_BASE || '__API_BASE__';
+
+    const PROPERTY_NAMES = {
+      casco_bay: 'Casco Bay Hotel',
+      saco_bay:  'Saco Bay Hotel',
+    };
+
+    function getProperty() {
+      const url = new URL(window.location.href);
+      const p = url.searchParams.get('p') || 'casco_bay';
+      return PROPERTY_NAMES[p] ? p : 'casco_bay';
+    }
+    const PROPERTY = getProperty();
+    document.getElementById('property-name').textContent = PROPERTY_NAMES[PROPERTY];
+
+    function showError(msg) {
+      const b = document.getElementById('banner-error');
+      b.textContent = msg;
+      b.classList.remove('hidden');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    function hideError() {
+      document.getElementById('banner-error').classList.add('hidden');
+    }
+
+    const STORAGE_KEY = `avr.housekeeper.${PROPERTY}`;
+
+    let currentHousekeeper = null;
+    let currentAssignments = [];
+
+    async function loadRoster() {
+      const sel = document.getElementById('housekeeper-select');
+      const btn = document.getElementById('pick-btn');
+      try {
+        const res = await fetch(`${window.__API_BASE}/api/public/housekeeping/${PROPERTY}/roster`);
+        if (!res.ok) throw new Error('Could not load roster');
+        const data = await res.json();
+        const roster = data.roster || [];
+        if (roster.length === 0) {
+          sel.innerHTML = '<option value="">No housekeepers on the roster yet</option>';
+          return;
+        }
+        sel.innerHTML = '<option value="">Choose your name…</option>' +
+          roster.map((h) => `<option value="${h.housekeeper_id}">${escapeHtml(h.name)}</option>`).join('');
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved && roster.find((h) => h.housekeeper_id === saved)) {
+          sel.value = saved;
+          btn.disabled = false;
+          // auto-advance
+          showRooms(saved, roster.find((h) => h.housekeeper_id === saved).name);
+        }
+      } catch (e) {
+        showError(e.message);
+      }
+    }
+
+    document.getElementById('housekeeper-select').addEventListener('change', (e) => {
+      document.getElementById('pick-btn').disabled = !e.target.value;
+    });
+
+    document.getElementById('pick-btn').addEventListener('click', async () => {
+      const sel = document.getElementById('housekeeper-select');
+      const id = sel.value;
+      if (!id) return;
+      const name = sel.options[sel.selectedIndex].text;
+      localStorage.setItem(STORAGE_KEY, id);
+      showRooms(id, name);
+    });
+
+    document.getElementById('switch-btn').addEventListener('click', () => {
+      localStorage.removeItem(STORAGE_KEY);
+      currentHousekeeper = null;
+      document.getElementById('pick').classList.remove('hidden');
+      document.getElementById('rooms').classList.add('hidden');
+    });
+
+    async function showRooms(housekeeper_id, name) {
+      currentHousekeeper = { id: housekeeper_id, name };
+      document.getElementById('who').textContent = name;
+      document.getElementById('pick').classList.add('hidden');
+      document.getElementById('rooms').classList.remove('hidden');
+      await refreshAssignments();
+    }
+
+    async function refreshAssignments() {
+      try {
+        hideError();
+        const url = `${window.__API_BASE}/api/public/housekeeping/${PROPERTY}/assignments?housekeeper_id=${encodeURIComponent(currentHousekeeper.id)}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Could not load assignments');
+        const data = await res.json();
+        currentAssignments = data.assignments || [];
+        renderRoomList();
+      } catch (e) {
+        showError(e.message);
+      }
+    }
+
+    function renderRoomList() {
+      const container = document.getElementById('room-list');
+      const empty = document.getElementById('empty');
+      if (currentAssignments.length === 0) {
+        container.innerHTML = '';
+        empty.classList.remove('hidden');
+      } else {
+        empty.classList.add('hidden');
+        container.innerHTML = currentAssignments.map((a) => `
+          <div class="room ${a.status === 'done' ? 'done' : ''}" data-id="${a.assignment_id}">
+            <div>
+              <div class="number">${escapeHtml(a.room_number)}</div>
+              ${a.notes ? `<div class="notes">${escapeHtml(a.notes)}</div>` : ''}
+            </div>
+            <button class="btn ${a.status === 'done' ? 'secondary' : 'primary'}" data-action="${a.status === 'done' ? 'reopen' : 'complete'}">
+              ${a.status === 'done' ? 'Undo' : 'Done'}
+            </button>
+          </div>
+        `).join('');
+      }
+      const done = currentAssignments.filter((a) => a.status === 'done').length;
+      const total = currentAssignments.length;
+      const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+      document.getElementById('progress-text').textContent = `${done} of ${total}`;
+      document.getElementById('progress-bar').style.width = `${pct}%`;
+      document.getElementById('progress-pct').textContent = `${pct}%`;
+    }
+
+    document.getElementById('room-list').addEventListener('click', async (e) => {
+      const btn = e.target.closest('button[data-action]');
+      if (!btn) return;
+      const roomEl = btn.closest('.room');
+      const id = roomEl.dataset.id;
+      const action = btn.dataset.action;
+      btn.disabled = true;
+      try {
+        const res = await fetch(
+          `${window.__API_BASE}/api/public/housekeeping/${PROPERTY}/assignments/${encodeURIComponent(id)}/complete`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ completed: action === 'complete' }),
+          }
+        );
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || `HTTP ${res.status}`);
+        }
+        await refreshAssignments();
+      } catch (err) {
+        showError(err.message);
+        btn.disabled = false;
+      }
+    });
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
+      );
+    }
+
+    loadRoster();
+  </script>
+</body>
+</html>

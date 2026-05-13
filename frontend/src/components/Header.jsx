@@ -8,24 +8,26 @@ export default function Header() {
   const roleLabel = ROLES.find((r) => r.id === user?.role)?.label || user?.role || ''
 
   return (
-    <header className="border-b border-ink-700 bg-ink-900/80 backdrop-blur sticky top-0 z-30">
-      <div className="container mx-auto max-w-7xl px-4 sm:px-6 py-3 flex items-center gap-3 sm:gap-4">
-        <Link to="/app" className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-lg bg-accent-teal flex items-center justify-center font-display text-lg font-semibold flex-shrink-0">A</div>
-          <div className="hidden sm:block">
-            <div className="font-display font-semibold leading-none">AVR Hospitality</div>
-            <div className="tag">Operations</div>
+    <header className="bg-white/85 backdrop-blur border-b border-line-subtle sticky top-0 z-30">
+      <div className="container mx-auto max-w-7xl px-4 sm:px-6 h-[57px] flex items-center gap-3 sm:gap-4">
+        <Link to="/app" className="flex items-center gap-2.5 min-w-0">
+          <div className="w-8 h-8 rounded-lg bg-ink text-white flex items-center justify-center text-[15px] font-semibold tracking-tight flex-shrink-0">
+            A
+          </div>
+          <div className="hidden sm:block leading-tight">
+            <div className="text-[15px] font-semibold tracking-tightish text-ink">AVR Hospitality</div>
+            <div className="text-[11px] text-ink-muted">Operations</div>
           </div>
         </Link>
         <div className="flex-1 flex justify-center">
           <PropertySwitcher />
         </div>
-        <div className="flex items-center gap-2 sm:gap-3">
-          <div className="text-right hidden sm:block">
-            <div className="text-sm leading-none">{user?.name || user?.email}</div>
-            <div className="tag">{roleLabel}</div>
+        <div className="flex items-center gap-3">
+          <div className="text-right hidden sm:block leading-tight">
+            <div className="text-[13px] text-ink font-medium">{user?.name || user?.email}</div>
+            <div className="text-[11px] text-ink-muted">{roleLabel}</div>
           </div>
-          <button onClick={logout} className="btn-secondary text-sm px-3 py-1.5 min-h-0" title="Sign out">
+          <button onClick={logout} className="btn-secondary text-[13px] px-3 py-1.5 min-h-0" title="Sign out">
             <span className="hidden sm:inline">Sign out</span>
             <span className="sm:hidden">⏏</span>
           </button>

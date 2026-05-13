@@ -53,11 +53,14 @@ export default function Admin() {
   }
 
   return (
-    <div className="space-y-5 fade-in">
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl sm:text-3xl font-display font-semibold flex-1">Users</h1>
-        <button onClick={() => setShowCreate((s) => !s)} className="btn-primary text-sm">
-          {showCreate ? 'Cancel' : '+ Create user'}
+    <div className="space-y-6 fade-in">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="flex-1">
+          <h1 className="page-title">Users</h1>
+          <p className="page-subtitle">Owner-only user management.</p>
+        </div>
+        <button onClick={() => setShowCreate((s) => !s)} className="btn-primary">
+          {showCreate ? 'Cancel' : 'Create user'}
         </button>
       </div>
 
@@ -65,8 +68,8 @@ export default function Admin() {
 
       {resetResult && (
         <Banner tone="success">
-          New temp password for <strong>{resetResult.username}</strong>: <code className="font-mono bg-ink-900 px-2 py-0.5 rounded">{resetResult.password}</code>
-          <button onClick={() => setResetResult(null)} className="ml-3 underline text-xs">Dismiss</button>
+          New temp password for <strong>{resetResult.username}</strong>: <code className="font-mono bg-white px-2 py-0.5 rounded border border-line-subtle">{resetResult.password}</code>
+          <button onClick={() => setResetResult(null)} className="ml-3 underline text-[13px]">Dismiss</button>
         </Banner>
       )}
 
@@ -81,53 +84,53 @@ export default function Admin() {
       )}
 
       <div className="card p-0 overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead className="bg-ink-900 text-text-secondary text-xs uppercase tracking-wider">
+        <table className="table-clean">
+          <thead>
             <tr>
-              <th className="text-left px-3 py-2">Email</th>
-              <th className="text-left px-3 py-2">Name</th>
-              <th className="text-left px-3 py-2">Role</th>
-              <th className="text-left px-3 py-2">Property</th>
-              <th className="text-left px-3 py-2">Status</th>
-              <th className="px-3 py-2"></th>
+              <th>Email</th>
+              <th>Name</th>
+              <th>Role</th>
+              <th>Property</th>
+              <th>Status</th>
+              <th></th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-ink-700">
+          <tbody>
             {users.map((u) => (
               <tr key={u.username}>
-                <td className="px-3 py-2 font-mono text-xs">{u.email}</td>
-                <td className="px-3 py-2">{u.name || '—'}</td>
-                <td className="px-3 py-2">
+                <td className="font-mono text-[12px] text-ink">{u.email}</td>
+                <td className="text-ink">{u.name || '—'}</td>
+                <td>
                   <select
                     value={u.role}
                     onChange={(e) => updateUser(u.username, { role: e.target.value })}
-                    className="bg-ink-900 border border-ink-700 rounded px-2 py-1 text-xs"
+                    className="select min-h-0 py-1.5 text-[13px]"
                   >
                     {ROLES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
                   </select>
                 </td>
-                <td className="px-3 py-2">
+                <td>
                   <select
                     value={u.property || 'both'}
                     onChange={(e) => updateUser(u.username, { property: e.target.value })}
-                    className="bg-ink-900 border border-ink-700 rounded px-2 py-1 text-xs"
+                    className="select min-h-0 py-1.5 text-[13px]"
                   >
                     {PROPERTIES.map((p) => <option key={p} value={p}>{p}</option>)}
                   </select>
                 </td>
-                <td className="px-3 py-2 text-xs">
-                  <span className={`badge ${u.enabled ? 'bg-accent-teal/20 text-accent-teal' : 'bg-accent-red/20 text-accent-red'}`}>
+                <td>
+                  <span className={u.enabled ? 'badge-positive' : 'badge-danger'}>
                     {u.enabled ? u.status : 'disabled'}
                   </span>
                 </td>
-                <td className="px-3 py-2 whitespace-nowrap text-right space-x-2">
-                  <button onClick={() => updateUser(u.username, { enabled: !u.enabled })} className="text-xs text-text-secondary hover:text-text-primary">
+                <td className="whitespace-nowrap text-right space-x-3">
+                  <button onClick={() => updateUser(u.username, { enabled: !u.enabled })} className="text-[13px] text-ink-body hover:text-ink">
                     {u.enabled ? 'Disable' : 'Enable'}
                   </button>
-                  <button onClick={() => resetPassword(u.username)} className="text-xs text-accent-amber hover:underline">
+                  <button onClick={() => resetPassword(u.username)} className="text-[13px] text-warning hover:underline">
                     Reset pw
                   </button>
-                  <button onClick={() => deleteUser(u.username)} className="text-xs text-accent-red hover:underline">
+                  <button onClick={() => deleteUser(u.username)} className="text-[13px] text-danger hover:underline">
                     Delete
                   </button>
                 </td>
@@ -161,18 +164,18 @@ function CreateUserForm({ onCreated }) {
     }
   }
   return (
-    <form onSubmit={submit} className="card border-accent-teal/40 space-y-3">
-      <h3 className="font-display text-base font-semibold">Create user</h3>
-      <div className="grid sm:grid-cols-2 gap-3">
+    <form onSubmit={submit} className="card bg-surface-subtle space-y-4">
+      <h3 className="section-title">Create user</h3>
+      <div className="grid sm:grid-cols-2 gap-4">
         <div><label className="label">Email</label><input className="input" type="email" required value={form.email} onChange={set('email')} /></div>
         <div><label className="label">Name</label><input className="input" value={form.name} onChange={set('name')} /></div>
         <div><label className="label">Role</label>
-          <select className="input" value={form.role} onChange={set('role')}>
+          <select className="select" value={form.role} onChange={set('role')}>
             {ROLES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
           </select>
         </div>
         <div><label className="label">Property</label>
-          <select className="input" value={form.property} onChange={set('property')}>
+          <select className="select" value={form.property} onChange={set('property')}>
             {PROPERTIES.map((p) => <option key={p} value={p}>{p}</option>)}
           </select>
         </div>
@@ -180,7 +183,7 @@ function CreateUserForm({ onCreated }) {
       <div className="flex justify-end">
         <button className="btn-primary" disabled={busy}>{busy ? 'Creating…' : 'Create user'}</button>
       </div>
-      {err && <div className="text-accent-red text-sm">{err}</div>}
+      {err && <div className="text-danger text-[14px]">{err}</div>}
     </form>
   )
 }

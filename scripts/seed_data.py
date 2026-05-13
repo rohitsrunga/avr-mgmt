@@ -123,6 +123,13 @@ INVENTORY_ITEMS = {
         "Fabuloso", "Pine Sol", "Ice bags", "Bin liners", "Garbage bags",
         "Laundry bags", "Tide pods", "Dryer sheets",
     ],
+    "linen": [
+        "Bath towels", "Hand towels", "Wash cloths", "Bath mats",
+        "Pillowcases", "Pillow covers",
+        "King fitted sheets", "King flat sheets",
+        "Queen fitted sheets", "Queen flat sheets",
+        "Blankets", "Mattress protectors",
+    ],
     "amenity": [
         "Soap", "Lotion", "Shampoo", "Conditioner", "Hand sanitizer", "Facial tissue",
         "Toilet paper", "Ice bucket", "Toothpaste packs", "K cups (reg)",
@@ -197,18 +204,6 @@ CASCO_BAY_FLAGS = {
 
 def saco_bay_rooms():
     return [f"{floor}{n:02d}" for floor in (1, 2, 3, 4) for n in range(1, 27)]
-
-
-# ============================================================
-# Linen item names (templates)
-# ============================================================
-
-LINEN_ITEMS = [
-    "Bath", "Hand", "Wash", "Mats",
-    "Pillowcase", "Pillow covers",
-    "King fitted", "King flat", "Queen fitted", "Queen flat",
-    "Blankets", "Mattress protectors",
-]
 
 
 def get_table(client, stack, suffix):

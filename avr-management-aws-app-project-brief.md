@@ -2,7 +2,7 @@
 
 ## Claude Code Project Brief
 
-Build a complete, production-ready hotel operations web application for AVR Management (Saish LLC). The app runs on AWS serverless infrastructure and serves as a centralized platform for hotel staff across three properties. Deploy everything with AWS SAM/CDK, connect to the Cloudbeds PMS API, and deliver a polished React frontend.
+Build a complete, production-ready hotel operations web application for AVR Management. The app runs on AWS serverless infrastructure and serves as a centralized platform for hotel staff across three properties. Deploy everything with AWS SAM/CDK, connect to the Cloudbeds PMS API, and deliver a polished React frontend.
 
 ---
 
@@ -10,11 +10,11 @@ Build a complete, production-ready hotel operations web application for AVR Mana
 
 ### Company Structure
 
-- **Entity**: Saish LLC (DBA AVR Management)
+- **Entity**: AVR Management
 - **Owners**: Rohit Srungavarapu, Abhijit Srungavarapu, Vasu Danda
 - **Properties**:
   - **Casco Bay Hotel** — South Portland, ME (Choice Hotels Ascend Collection). Currently operational, uses Cloudbeds as PMS.
-  - **Saco Bay Hotel** — Saco, ME (independent, formerly Ramada by Wyndham). Currently operational, uses Cloudbeds as PMS. Recently rebranded.
+  - **Saco Bay Hotel** — Saco, ME (independent). Currently operational, uses Cloudbeds as PMS. Recently rebranded.
   - **TownePlace Suites / Fairfield Inn & Suites** — Saco, ME (Marriott dual-brand). Under construction. Will be added to the app later.
 - **Staff Roles**: Front desk (3 shifts), housekeeping, groundsman, breakfast staff, ownership/management.
 - **Key Programs**: MEPS military lodging contract (Casco Bay Hotel), Park & Fly airport parking program (Casco Bay Hotel).

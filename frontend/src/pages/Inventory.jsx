@@ -54,22 +54,29 @@ export default function Inventory() {
   }
 
   return (
-    <div className="space-y-5 fade-in">
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl sm:text-3xl font-display font-semibold flex-1">Inventory</h1>
+    <div className="space-y-6 fade-in">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="flex-1">
+          <h1 className="page-title">Inventory</h1>
+          <p className="page-subtitle">Stock counts, par levels, and weekly linen counts.</p>
+        </div>
         {isMgmt && (
-          <button onClick={() => setShowAdd((s) => !s)} className="btn-secondary text-sm">
-            {showAdd ? 'Cancel' : '+ Add item'}
+          <button onClick={() => setShowAdd((s) => !s)} className="btn-secondary">
+            {showAdd ? 'Cancel' : 'Add item'}
           </button>
         )}
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-1">
+      <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
         {INVENTORY_CATEGORIES.map((c) => (
           <button
             key={c.id}
             onClick={() => setCategory(c.id)}
-            className={`px-3 py-2 rounded-md text-sm whitespace-nowrap ${category === c.id ? 'bg-accent-teal text-white' : 'bg-ink-800 text-text-secondary hover:text-text-primary'}`}
+            className={`px-3.5 py-2 rounded-full text-[13px] font-medium whitespace-nowrap transition-all ${
+              category === c.id
+                ? 'bg-ink text-white'
+                : 'bg-white text-ink-body border border-line-subtle hover:border-line'
+            }`}
           >
             {c.label}
           </button>
@@ -87,78 +94,82 @@ export default function Inventory() {
       )}
 
       {items.length === 0 ? (
-        <div className="card text-center py-10 text-text-muted">No items in this category yet.</div>
+        <div className="card text-center py-12 text-ink-muted text-[14px]">No items in this category yet.</div>
       ) : (
         <div className="card overflow-hidden p-0">
-          {/* desktop table */}
-          <table className="w-full text-sm hidden md:table">
-            <thead className="bg-ink-900 text-text-secondary text-xs uppercase tracking-wider">
+          <table className="table-clean hidden md:table">
+            <thead>
               <tr>
-                <th className="text-left px-4 py-2.5">Item</th>
-                <th className="text-left px-4 py-2.5 w-32">Stock / Par</th>
-                <th className="text-left px-4 py-2.5 w-48">Bar</th>
-                <th className="text-left px-4 py-2.5 w-36">Last update</th>
-                {isMgmt && <th className="px-4 py-2.5 w-12"></th>}
+                <th>Item</th>
+                <th className="w-36">Stock / Par</th>
+                <th className="w-52">Fill</th>
+                <th className="w-44">Last update</th>
+                {isMgmt && <th className="w-10"></th>}
               </tr>
             </thead>
-            <tbody className="divide-y divide-ink-700">
-              {items.map((item) => (
-                <tr key={item.item_id} className={item.par_level > 0 && item.current_stock / item.par_level < 0.2 ? 'bg-accent-red/10' : ''}>
-                  <td className="px-4 py-2.5">
-                    <div>{item.item_name}</div>
-                    <div className="tag">{item.unit}</div>
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <div className="flex gap-1 items-center">
-                      <input className="input w-16 text-center py-1 min-h-0" type="number" defaultValue={item.current_stock}
+            <tbody>
+              {items.map((item) => {
+                const low = item.par_level > 0 && item.current_stock / item.par_level < 0.2
+                return (
+                  <tr key={item.item_id} className={low ? 'bg-danger-tint/40' : ''}>
+                    <td>
+                      <div className="text-ink text-[14px]">{item.item_name}</div>
+                      <div className="text-[12px] text-ink-muted">{item.unit}</div>
+                    </td>
+                    <td>
+                      <div className="flex gap-1.5 items-center">
+                        <input className="input w-16 text-center px-1.5 py-1.5 min-h-0" type="number" defaultValue={item.current_stock}
+                          onBlur={(e) => updateField(item, 'current_stock', Number(e.target.value))} />
+                        <span className="text-ink-muted">/</span>
+                        <input className="input w-16 text-center px-1.5 py-1.5 min-h-0" type="number" defaultValue={item.par_level}
+                          onBlur={(e) => updateField(item, 'par_level', Number(e.target.value))}
+                          disabled={!isMgmt} />
+                      </div>
+                    </td>
+                    <td><StockBar current={item.current_stock} par={item.par_level} /></td>
+                    <td className="text-[12px] text-ink-muted">
+                      {item.last_updated ? new Date(item.last_updated).toLocaleString() : '—'}
+                      {item.updated_by && <div>{item.updated_by}</div>}
+                    </td>
+                    {isMgmt && (
+                      <td className="text-right">
+                        <button onClick={() => deleteItem(item)} className="text-ink-muted hover:text-danger text-[18px] leading-none">×</button>
+                      </td>
+                    )}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          <div className="md:hidden divide-y divide-line-subtle">
+            {items.map((item) => {
+              const low = item.par_level > 0 && item.current_stock / item.par_level < 0.2
+              return (
+                <div key={item.item_id} className={`p-4 ${low ? 'bg-danger-tint/40' : ''}`}>
+                  <div className="flex justify-between mb-2">
+                    <div className="text-[15px] font-medium text-ink">{item.item_name}</div>
+                    {isMgmt && <button onClick={() => deleteItem(item)} className="text-ink-muted text-[18px] leading-none">×</button>}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    <div>
+                      <div className="label">Stock</div>
+                      <input className="input" type="number" defaultValue={item.current_stock}
                         onBlur={(e) => updateField(item, 'current_stock', Number(e.target.value))} />
-                      <span className="text-text-muted">/</span>
-                      <input className="input w-16 text-center py-1 min-h-0" type="number" defaultValue={item.par_level}
+                    </div>
+                    <div>
+                      <div className="label">Par</div>
+                      <input className="input" type="number" defaultValue={item.par_level}
                         onBlur={(e) => updateField(item, 'par_level', Number(e.target.value))}
                         disabled={!isMgmt} />
                     </div>
-                  </td>
-                  <td className="px-4 py-2.5"><StockBar current={item.current_stock} par={item.par_level} /></td>
-                  <td className="px-4 py-2.5 text-xs text-text-secondary">
-                    {item.last_updated ? new Date(item.last_updated).toLocaleString() : '—'}
-                    {item.updated_by && <div className="tag">{item.updated_by}</div>}
-                  </td>
-                  {isMgmt && (
-                    <td className="px-4 py-2.5 text-right">
-                      <button onClick={() => deleteItem(item)} className="text-text-muted hover:text-accent-red">×</button>
-                    </td>
+                  </div>
+                  <StockBar current={item.current_stock} par={item.par_level} />
+                  {item.last_updated && (
+                    <div className="text-[12px] text-ink-muted mt-2">{item.updated_by} · {new Date(item.last_updated).toLocaleDateString()}</div>
                   )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {/* mobile cards */}
-          <div className="md:hidden divide-y divide-ink-700">
-            {items.map((item) => (
-              <div key={item.item_id} className={`p-4 ${item.par_level > 0 && item.current_stock / item.par_level < 0.2 ? 'bg-accent-red/10' : ''}`}>
-                <div className="flex justify-between mb-2">
-                  <div className="font-medium">{item.item_name}</div>
-                  {isMgmt && <button onClick={() => deleteItem(item)} className="text-text-muted">×</button>}
                 </div>
-                <div className="grid grid-cols-2 gap-2 mb-2">
-                  <div>
-                    <div className="label">Stock</div>
-                    <input className="input" type="number" defaultValue={item.current_stock}
-                      onBlur={(e) => updateField(item, 'current_stock', Number(e.target.value))} />
-                  </div>
-                  <div>
-                    <div className="label">Par</div>
-                    <input className="input" type="number" defaultValue={item.par_level}
-                      onBlur={(e) => updateField(item, 'par_level', Number(e.target.value))}
-                      disabled={!isMgmt} />
-                  </div>
-                </div>
-                <StockBar current={item.current_stock} par={item.par_level} />
-                {item.last_updated && (
-                  <div className="tag mt-2">{item.updated_by} · {new Date(item.last_updated).toLocaleDateString()}</div>
-                )}
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}
@@ -187,12 +198,12 @@ function AddItemForm({ propertyId, category, onAdded }) {
     }
   }
   return (
-    <div className="card border-accent-amber/40">
-      <h3 className="font-display text-base font-semibold mb-3">Add inventory item</h3>
+    <div className="card bg-surface-subtle">
+      <h3 className="section-title mb-3">Add inventory item</h3>
       <div className="grid sm:grid-cols-[1fr,120px,120px,auto] gap-2">
         <input className="input" placeholder="Item name" value={name} onChange={(e) => setName(e.target.value)} />
         <input className="input" placeholder="Par" type="number" value={par} onChange={(e) => setPar(e.target.value)} />
-        <select className="input" value={unit} onChange={(e) => setUnit(e.target.value)}>
+        <select className="select" value={unit} onChange={(e) => setUnit(e.target.value)}>
           <option>each</option><option>box</option><option>case</option><option>bag</option>
         </select>
         <button className="btn-primary" disabled={busy} onClick={submit}>{busy ? 'Adding…' : 'Add'}</button>

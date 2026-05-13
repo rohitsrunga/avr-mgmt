@@ -41,8 +41,9 @@ Globals:
         TABLE_INVENTORY: !Ref InventoryTable
         TABLE_CHECKLISTS: !Ref ChecklistsTable
         TABLE_ROOMS: !Ref RoomEquipmentTable
-        TABLE_LINEN: !Ref LinenCountsTable
         TABLE_PARKFLY: !Ref ParkAndFlyTable
+        TABLE_DINNER_ORDERS: !Ref DinnerOrdersTable
+        TABLE_HOUSEKEEPING: !Ref HousekeepingTable
         TABLE_REPORTS: !Ref CachedReportsTable
         USER_POOL_ID: !Ref UserPool
         USER_POOL_CLIENT_ID: !Ref UserPoolClient
@@ -190,22 +191,6 @@ Resources:
         - AttributeName: SK
           KeyType: RANGE
 
-  LinenCountsTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: !Sub '${StackPrefix}-linen'
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: PK
-          AttributeType: S
-        - AttributeName: SK
-          AttributeType: S
-      KeySchema:
-        - AttributeName: PK
-          KeyType: HASH
-        - AttributeName: SK
-          KeyType: RANGE
-
   ParkAndFlyTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -235,6 +220,38 @@ Resources:
           Projection:
             ProjectionType: ALL
 
+  DinnerOrdersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${StackPrefix}-dinner-orders'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+
+  HousekeepingTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${StackPrefix}-housekeeping'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+
   CachedReportsTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -262,8 +279,13 @@ Resources:
           - https://avrhospitality.com
           - https://www.avrhospitality.com
           - https://avr-hospitality.pages.dev
+          - https://avr-mgmt.abhijit-s91.workers.dev
           - http://localhost:5173
           - http://localhost:5174
+          - http://localhost:8000
+          - !Sub 'http://${StackPrefix}-public-forms-${AWS::AccountId}.s3-website-${AWS::Region}.amazonaws.com'
+          - !Sub 'https://${StackPrefix}-public-forms-${AWS::AccountId}.s3.${AWS::Region}.amazonaws.com'
+          - !Sub 'https://${StackPrefix}-public-forms-${AWS::AccountId}.s3.amazonaws.com'
         AllowHeaders:
           - Content-Type
           - Authorization
@@ -402,43 +424,6 @@ Resources:
           Type: HttpApi
           Properties: { ApiId: !Ref HttpApi, Method: DELETE, Path: '/api/parkfly/{proxy+}' }
 
-  LinenFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub '${StackPrefix}-linen'
-      CodeUri: backend/
-      Handler: linen.handler.handler
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref LinenCountsTable
-      Events:
-        Get:
-          Type: HttpApi
-          Properties: { ApiId: !Ref HttpApi, Method: GET, Path: '/api/linen/{proxy+}' }
-        Post:
-          Type: HttpApi
-          Properties: { ApiId: !Ref HttpApi, Method: POST, Path: '/api/linen/{proxy+}' }
-        Put:
-          Type: HttpApi
-          Properties: { ApiId: !Ref HttpApi, Method: PUT, Path: '/api/linen/{proxy+}' }
-        Delete:
-          Type: HttpApi
-          Properties: { ApiId: !Ref HttpApi, Method: DELETE, Path: '/api/linen/{proxy+}' }
-
-  ReportsFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub '${StackPrefix}-reports'
-      CodeUri: backend/
-      Handler: reports.handler.handler
-      Policies:
-        - DynamoDBReadPolicy:
-            TableName: !Ref CachedReportsTable
-      Events:
-        Get:
-          Type: HttpApi
-          Properties: { ApiId: !Ref HttpApi, Method: GET, Path: '/api/reports/{proxy+}' }
-
   AdminFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -473,6 +458,110 @@ Resources:
           Type: HttpApi
           Properties: { ApiId: !Ref HttpApi, Method: DELETE, Path: '/api/admin/{proxy+}' }
 
+  # ----------------------------------------------------------------
+  # Dinner Orders (Casco Bay evening dinner program)
+  # /api/dinner-orders/*        — authenticated dashboard
+  # /api/public/dinner-orders/* — public submission form (Auth: NONE)
+  # ----------------------------------------------------------------
+  DinnerOrdersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${StackPrefix}-dinner-orders'
+      CodeUri: backend/
+      Handler: dinner_orders.handler.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DinnerOrdersTable
+      Events:
+        Get:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: GET, Path: '/api/dinner-orders/{proxy+}' }
+        Put:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: PUT, Path: '/api/dinner-orders/{proxy+}' }
+        Delete:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: DELETE, Path: '/api/dinner-orders/{proxy+}' }
+        PublicGet:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: '/api/public/dinner-orders/{proxy+}'
+            Auth: { Authorizer: NONE }
+        PublicPost:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: '/api/public/dinner-orders/{proxy+}'
+            Auth: { Authorizer: NONE }
+
+  # ----------------------------------------------------------------
+  # Housekeeping (roster + room assignments, both properties)
+  # /api/housekeeping/*        — authenticated dashboard
+  # /api/public/housekeeping/* — public form for housekeepers (Auth: NONE)
+  # ----------------------------------------------------------------
+  HousekeepingFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${StackPrefix}-housekeeping'
+      CodeUri: backend/
+      Handler: housekeeping.handler.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref HousekeepingTable
+      Events:
+        Get:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: GET, Path: '/api/housekeeping/{proxy+}' }
+        Post:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: POST, Path: '/api/housekeeping/{proxy+}' }
+        Put:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: PUT, Path: '/api/housekeeping/{proxy+}' }
+        Delete:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: DELETE, Path: '/api/housekeeping/{proxy+}' }
+        PublicGet:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: '/api/public/housekeeping/{proxy+}'
+            Auth: { Authorizer: NONE }
+        PublicPost:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: '/api/public/housekeeping/{proxy+}'
+            Auth: { Authorizer: NONE }
+
+  # ----------------------------------------------------------------
+  # Reports (read-only PMS metrics for the Overview tab)
+  # Backed by CachedReportsTable, populated by SyncFunction every 6h.
+  # ----------------------------------------------------------------
+  ReportsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${StackPrefix}-reports'
+      CodeUri: backend/
+      Handler: reports.handler.handler
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref CachedReportsTable
+      Events:
+        Get:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: GET, Path: '/api/reports/{proxy+}' }
+
+  # ----------------------------------------------------------------
+  # Cloudbeds sync (Saco Bay) — pulls dashboard data into the cache.
+  # EventBridge schedule starts disabled; enable after running the
+  # cloudbeds_oauth_setup.py script to populate the secret.
+  # ----------------------------------------------------------------
   SyncFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -498,7 +587,7 @@ Resources:
             Enabled: false
 
   # ================================================================
-  # Secrets Manager (Cloudbeds OAuth - Saco Bay only for now)
+  # Secrets Manager (Cloudbeds OAuth — Saco Bay only for now)
   # ================================================================
   SacoBayCloudbedsSecret:
     Type: AWS::SecretsManager::Secret
@@ -508,7 +597,45 @@ Resources:
       SecretString: '{"client_id":"PLACEHOLDER","client_secret":"PLACEHOLDER","refresh_token":"PLACEHOLDER","api_key":"PLACEHOLDER"}'
 
   # ================================================================
-  # S3 + CloudFront for frontend
+  # Public Forms S3 bucket — static HTML for unauthenticated forms.
+  # Hosts dinner.html and housekeeping.html.
+  # ================================================================
+  PublicFormsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${StackPrefix}-public-forms-${AWS::AccountId}'
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET]
+            AllowedOrigins: ['*']
+            MaxAge: 3600
+
+  PublicFormsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref PublicFormsBucket
+      PolicyDocument:
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: '*'
+            Action: s3:GetObject
+            Resource: !Sub '${PublicFormsBucket.Arn}/*'
+
+  # ================================================================
+  # S3 + CloudFront for frontend (optional)
   # ================================================================
   FrontendBucket:
     Type: AWS::S3::Bucket
@@ -638,6 +765,18 @@ Outputs:
   ApiUrl:
     Description: HTTP API base URL
     Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.amazonaws.com'
+  PublicFormsBucket:
+    Description: S3 bucket holding the public static HTML forms
+    Value: !Ref PublicFormsBucket
+  PublicFormsUrl:
+    Description: Base URL for the public static forms (S3 website endpoint)
+    Value: !Sub 'http://${PublicFormsBucket}.s3-website-${AWS::Region}.amazonaws.com'
+  DinnerFormUrl:
+    Description: Public URL for the Casco Bay dinner-order form
+    Value: !Sub 'http://${PublicFormsBucket}.s3-website-${AWS::Region}.amazonaws.com/dinner.html'
+  HousekeepingFormUrl:
+    Description: Public URL for the housekeeping form
+    Value: !Sub 'http://${PublicFormsBucket}.s3-website-${AWS::Region}.amazonaws.com/housekeeping.html'
   CloudFrontUrl:
     Description: CloudFront distribution URL (frontend)
     Condition: ShouldDeployFrontend

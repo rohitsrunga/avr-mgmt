@@ -1,12 +1,12 @@
 # AVR Management — Hotel Operations Platform
 
-Internal serverless web app for AVR Management (Saish LLC). Replaces paper-and-pen operations across two properties (Casco Bay Hotel, Saco Bay Hotel) with a single mobile-first React + AWS app.
+Internal serverless web app for AVR Management. Replaces paper-and-pen operations across two properties (Casco Bay Hotel, Saco Bay Hotel) with a mobile-first React + AWS app, plus a tiny separately-hosted bundle of public static HTML forms on S3 for guest/staff input.
 
 ## Architecture
-- **Frontend**: React 18 + Vite + Tailwind, deployed to S3 + CloudFront
-- **Backend**: Python 3.11 Lambda functions behind API Gateway (HTTP API + Cognito JWT authorizer)
-- **Data**: DynamoDB on-demand (7 tables), Secrets Manager for Cloudbeds OAuth
-- **Sync**: EventBridge → sync Lambda → Cloudbeds API every 6 hours (Saco Bay only — Casco Bay uses Choice Advantage which has no public API)
+- **Frontend** (auth'd SPA): React 18 + Vite + Tailwind, deployed to S3 + CloudFront (or Cloudflare Pages)
+- **Public forms**: vanilla HTML/CSS/JS on a public-read S3 bucket — dinner orders (Casco Bay) and housekeeping room assignments (both properties)
+- **Backend**: Python 3.11 Lambdas (arm64) behind API Gateway (HTTP API + Cognito JWT authorizer) with per-route auth bypass for the public form endpoints
+- **Data**: DynamoDB on-demand (7 tables, all `PK`/`SK` composite)
 - **Auth**: Cognito User Pool with custom `role` and `property` attributes; admin-create-only
 
 ## Prerequisites (one-time)
@@ -18,110 +18,104 @@ Internal serverless web app for AVR Management (Saish LLC). Replaces paper-and-p
 ## Deploy from scratch
 
 ```bash
-# 1. Install frontend deps + build
-cd frontend
-npm install
-npm run build
-cd ..
+# 1. Build the frontend SPA
+cd frontend && npm install && npm run build && cd ..
 
 # 2. Build the SAM stack
-#    If you have python3.11 locally:
-sam build
-#    Otherwise (uses Docker):
-sam build --use-container
+sam build                       # if you have python3.11 locally
+# or
+sam build --use-container       # otherwise (uses Docker)
 
-# 3. Deploy (interactive first time, accepts defaults from samconfig.toml after)
-sam deploy --guided    # first time only
-# subsequent deploys:
-sam deploy
+# 3. Deploy
+sam deploy --guided             # first time only
+sam deploy                      # subsequent deploys
 
-# 4. Wire frontend to deployed APIs
-#    Grab outputs:
+# 4. Read stack outputs (you'll need these for env vars + the upload scripts)
 aws cloudformation describe-stacks --stack-name avr-mgmt \
   --query "Stacks[0].Outputs" --output table
 
-#    Copy frontend/.env.example -> frontend/.env.local and paste in:
+# 5. Wire frontend env values
+#    Copy frontend/.env.example -> frontend/.env.local and paste:
 #       VITE_USER_POOL_ID
 #       VITE_USER_POOL_CLIENT_ID
 #       VITE_API_BASE_URL
-
-#    Rebuild the frontend with the new env values:
+#       VITE_PUBLIC_FORMS_BASE_URL   (from PublicFormsUrl output)
+#    Then rebuild the frontend:
 cd frontend && npm run build && cd ..
 
-# 5. Upload frontend to S3 + invalidate CloudFront
+# 6. Upload the SPA to S3 + invalidate CloudFront (only if DeployFrontend=true)
 ./scripts/upload_frontend.sh
 
-# 6. Seed master data (shift tasks, inventory items, checklists, rooms)
+# 7. Upload the public static forms (dinner.html + housekeeping.html)
+./scripts/upload_forms.sh
+
+# 8. Seed master data
 python3 scripts/seed_data.py --stack avr-mgmt --region us-east-1
 
-# 7. Create the first owner user
+# 9. Create the first owner user
 python3 scripts/setup_cognito.py --stack avr-mgmt --region us-east-1 \
-  --email rohit_gazer@yahoo.com --name "Rohit Srungavarapu"
+  --email owner@example.com --name "Owner Name"
 # Save the temporary password printed to the console.
 
-# 8. Confirm the SNS billing-alarm subscription email
-#    AWS will send a confirmation link to the OwnerEmail you set.
+# 10. Confirm the SNS billing-alarm subscription email (sent to OwnerEmail)
 
-# 9. Visit the CloudFront URL (printed in stack outputs) and sign in.
+# 11. Visit the frontend URL and sign in.
 ```
 
-## Cloudbeds setup (Saco Bay only — optional)
+## In-app tabs
 
-1. Register an app in the Cloudbeds developer portal with redirect URI `http://localhost:8765/callback`.
-2. Run the interactive setup:
-   ```bash
-   python3 scripts/cloudbeds_oauth_setup.py --stack avr-mgmt
-   ```
-3. After the secret is in place, enable the EventBridge schedule:
-   ```bash
-   aws events enable-rule --name avr-mgmt-SyncFunctionSchedule  # name varies — see SAM output
-   ```
-   Or set `Enabled: true` in `template.yaml` and redeploy. The sync runs every 6 hours.
+The authenticated SPA exposes these tabs (role-gated):
 
-## Project layout
+| Tab              | Description                                                            | Roles |
+|------------------|------------------------------------------------------------------------|-------|
+| Overview         | Today's snapshot — shift progress, low-stock alerts, Park & Fly        | owner / manager / frontdesk |
+| Shift Checklist  | Daily shift tasks, handoff notes, plus breakfast & groundsman lists    | all (except some restricted by role) |
+| Inventory        | Stock + par levels, low-stock alerts. Includes the **Linen** category. | owner / manager / frontdesk / breakfast |
+| Rooms            | Per-room equipment audit and maintenance notes                         | owner / manager / frontdesk / housekeeping |
+| Housekeeping     | Roster + per-day room assignments. Surfaces the public form URL.       | owner / manager / frontdesk |
+| Dinner Orders    | Casco Bay only — evening dinner order queue. Surfaces the form URL.    | owner / manager / frontdesk |
+| Admin            | User management (Cognito)                                              | owner |
 
-```
-template.yaml         AWS SAM stack (Cognito, API GW, Lambdas, DynamoDB, S3, CloudFront, alarms)
-samconfig.toml        Default SAM deploy config
-backend/
-  shared/             auth.py, dynamo.py, response.py, router.py
-  shifts/  inventory/  checklists/  rooms/  parkfly/  linen/  reports/  sync/  admin/
-frontend/
-  src/
-    auth/             AuthProvider, ProtectedRoute, LoginPage
-    components/       Header, NavTabs, PropertySwitcher, MetricCard, StockBar, etc.
-    hooks/            useApi, useProperty
-    pages/            Dashboard, Shifts, Inventory, Checklists, Rooms, ParkFly, Linen, Reports, Admin
-scripts/
-  seed_data.py              Populate DynamoDB master data
-  setup_cognito.py          Create the first owner user
-  cloudbeds_oauth_setup.py  Interactive OAuth flow + Secrets Manager write
-  upload_frontend.sh        Sync frontend/dist to S3 + invalidate CloudFront
-```
+## Public forms (no login)
+
+Two static pages on S3, branded for each property, no PII collected beyond what guests/housekeepers volunteer:
+
+- **Dinner order form (Casco Bay)** — `…/dinner.html?p=casco_bay`. Submits to `POST /api/public/dinner-orders/casco_bay`. Front-desk sees orders in real time in the Dinner Orders tab and checks them off as plates go out.
+- **Housekeeping form (both properties)** — `…/housekeeping.html?p=casco_bay` or `…/housekeeping.html?p=saco_bay`. Housekeeper picks her name from the dropdown, sees today's assigned rooms, taps "Done" as she finishes each. Managers assign rooms in the Housekeeping tab.
+
+The form URLs are printed by [`scripts/upload_forms.sh`](scripts/upload_forms.sh) and are also surfaced (copy-to-clipboard) in the respective dashboard tabs.
 
 ## Roles
 | Role          | Tabs visible |
 |---------------|--------------|
-| owner         | All (incl. Admin, Reports) |
+| owner         | All (incl. Admin) |
 | manager       | All except Admin |
-| frontdesk     | Overview, Shifts, Inventory, Checklists, Rooms, Park & Fly |
-| housekeeping  | Checklists, Rooms, Linen |
-| grounds       | Checklists |
-| breakfast     | Checklists, Inventory |
+| frontdesk     | Overview, Shift Checklist, Inventory, Rooms, Housekeeping, Dinner Orders |
+| housekeeping  | Shift Checklist, Rooms (day-to-day housekeepers use the public form, not this login) |
+| grounds       | Shift Checklist |
+| breakfast     | Shift Checklist, Inventory |
 
 Property scoping: `owner`/`manager` always see both properties. Other roles are tied to one property (`casco_bay` or `saco_bay`) or `both` via `custom:property` Cognito attribute.
 
 ## Day-2 ops
 
 - **Add a user** — Admin tab → "Create user" (owner only). Captures temp password to share manually.
-- **Reset a password** — Admin tab → "Reset pw". Generates a temp password.
-- **Edit shift task templates** — Shifts tab → "Edit tasks" (owner/manager only).
-- **Add inventory items** — Inventory tab → "+ Add item" (owner/manager only).
-- **Update room data** — Rooms tab → click a row → edit fields inline.
-- **Force a Cloudbeds sync** — invoke the sync Lambda manually:
-  ```bash
-  aws lambda invoke --function-name avr-mgmt-sync --region us-east-1 /tmp/out.json
-  ```
+- **Reset a password** — Admin tab → "Reset pw".
+- **Edit shift task templates** — Shift Checklist tab → "Edit tasks" (owner/manager only).
+- **Add inventory items / linen categories** — Inventory tab → "Add item" (owner/manager only).
+- **Assign housekeeping rooms** — Housekeeping tab → pick a housekeeper from the roster, type the room numbers, press Assign. Housekeepers see their rooms in the public form within seconds.
+- **Process dinner orders** — Dinner Orders tab → open cards as they arrive, mark each "Made" when the plate is out.
+- **Push a new form change** — Edit `forms/dinner.html`, `forms/housekeeping.html`, or `forms/styles.css`, then `./scripts/upload_forms.sh`. No SAM redeploy needed.
+
+## Migrating from earlier versions
+
+If you previously had the standalone Linen tab, run the migration before re-deploying:
+
+```bash
+python3 scripts/migrate_linen_to_inventory.py --stack avr-mgmt --dry-run
+python3 scripts/migrate_linen_to_inventory.py --stack avr-mgmt
+sam deploy   # the now-removed Linen DynamoDB table will be deleted by CloudFormation
+```
 
 ## Cost notes
 - Target: $0–2/mo. Mostly free tier; CloudFront + small DynamoDB usage are the only ongoing costs after Year 1 free tier expires.
@@ -131,6 +125,7 @@ Property scoping: `owner`/`manager` always see both properties. Other roles are 
 
 ```bash
 sam delete --stack-name avr-mgmt --region us-east-1
-# S3 frontend bucket may need to be emptied first:
-aws s3 rm s3://avr-mgmt-frontend-<account-id> --recursive
+# S3 buckets need to be emptied first if they contain objects:
+aws s3 rm s3://avr-public-forms-<account-id> --recursive
+aws s3 rm s3://avr-frontend-<account-id> --recursive   # if DeployFrontend was true
 ```

@@ -47,13 +47,13 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <div className="card w-full max-w-md">
-        <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 rounded-lg bg-accent-teal flex items-center justify-center font-display text-xl font-semibold">A</div>
-          <div>
-            <h1 className="text-xl font-semibold">AVR Management</h1>
-            <div className="tag">Hotel operations</div>
+    <div className="min-h-screen flex items-center justify-center px-4 bg-surface-muted">
+      <div className="card-elevated w-full max-w-md">
+        <div className="flex items-center gap-3 mb-7">
+          <div className="w-10 h-10 rounded-xl bg-ink text-white flex items-center justify-center text-lg font-semibold">A</div>
+          <div className="leading-tight">
+            <h1 className="text-[17px] font-semibold text-ink">AVR Hospitality</h1>
+            <div className="text-[12px] text-ink-muted">Operations sign-in</div>
           </div>
         </div>
         {!pendingChallenge ? (
@@ -66,12 +66,12 @@ export default function LoginPage() {
               <label className="label">Password</label>
               <input className="input" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
             </div>
-            {error && <div className="text-accent-red text-sm">{error}</div>}
+            {error && <div className="text-danger text-[14px]">{error}</div>}
             <button type="submit" disabled={busy} className="btn-primary w-full">{busy ? 'Signing in…' : 'Sign in'}</button>
           </form>
         ) : (
           <form onSubmit={onCompleteNewPassword} className="space-y-4">
-            <p className="text-text-body text-sm">Set a new password for first-time sign-in.</p>
+            <p className="text-ink-body text-[14px]">Set a new password for first-time sign-in.</p>
             <div>
               <label className="label">New password</label>
               <input className="input" type="password" required value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoComplete="new-password" />
@@ -80,7 +80,7 @@ export default function LoginPage() {
               <label className="label">Confirm new password</label>
               <input className="input" type="password" required value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} autoComplete="new-password" />
             </div>
-            {error && <div className="text-accent-red text-sm">{error}</div>}
+            {error && <div className="text-danger text-[14px]">{error}</div>}
             <button type="submit" disabled={busy} className="btn-primary w-full">{busy ? 'Updating…' : 'Continue'}</button>
           </form>
         )}

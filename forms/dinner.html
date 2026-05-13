@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f5f5f7" />
+  <title>Dinner Order · Casco Bay Hotel</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="brand">
+      <div class="mark">A</div>
+      <div class="meta">
+        <div class="name">Casco Bay Hotel</div>
+        <div class="sub">AVR Hospitality</div>
+      </div>
+    </header>
+
+    <h1 class="page-title">Order dinner</h1>
+    <p class="page-subtitle">For tonight's dinner service. Submit one form per guest.</p>
+
+    <div id="banner-error" class="banner error hidden"></div>
+
+    <form id="order-form" class="card">
+      <div class="field">
+        <label for="guest_name">Your name</label>
+        <input id="guest_name" name="guest_name" type="text" required maxlength="80" autocomplete="off" />
+      </div>
+
+      <div class="field">
+        <label for="room_number">Room number <span class="muted">(optional)</span></label>
+        <input id="room_number" name="room_number" type="text" maxlength="20" autocomplete="off" />
+      </div>
+
+      <div class="field">
+        <label>Sides</label>
+        <div class="options" id="sides"></div>
+      </div>
+
+      <div class="field">
+        <label>Sandwich</label>
+        <div class="options" id="sandwiches"></div>
+      </div>
+
+      <div class="field">
+        <label>Drink</label>
+        <div class="options" id="drinks"></div>
+      </div>
+
+      <div class="field">
+        <label for="notes">Notes <span class="muted">(allergies, preferences)</span></label>
+        <textarea id="notes" name="notes" maxlength="300"></textarea>
+      </div>
+
+      <button type="submit" class="btn primary block" id="submit-btn">Submit order</button>
+    </form>
+
+    <div id="success" class="card success-state hidden">
+      <div class="check"></div>
+      <h2>Order received</h2>
+      <p>Your dinner is on the way. Thank you!</p>
+      <button type="button" class="btn secondary" id="new-order-btn">Place another order</button>
+    </div>
+
+    <footer class="foot">AVR Hospitality Management</footer>
+  </div>
+
+  <script>
+    // Replaced by scripts/upload_forms.sh with the live API URL on deploy.
+    window.__API_BASE = window.__API_BASE || '__API_BASE__';
+
+    const SIDES = [
+      { id: 'salad',      label: 'Salad' },
+      { id: 'cookie',     label: 'Cookie' },
+      { id: 'chips',      label: 'Chips' },
+      { id: 'mac_cheese', label: 'Mac and Cheese' },
+    ];
+    const SANDWICHES = [
+      { id: 'none',    label: 'No sandwich' },
+      { id: 'chicken', label: 'Chicken' },
+      { id: 'veggie',  label: 'Veggie' },
+    ];
+    const DRINKS = [
+      { id: 'water', label: 'Water' },
+      { id: 'soda',  label: 'Soda' },
+      { id: 'juice', label: 'Juice' },
+      { id: 'none',  label: 'No drink' },
+    ];
+
+    function renderOptions(containerId, list, type, name) {
+      const el = document.getElementById(containerId);
+      el.innerHTML = list.map((opt, i) => `
+        <label class="option ${type === 'checkbox' ? 'checkbox' : 'radio'}">
+          <input
+            type="${type}"
+            name="${name}"
+            value="${opt.id}"
+            ${type === 'radio' && i === 0 ? 'checked' : ''}
+          />
+          <span class="indicator"></span>
+          <span>${opt.label}</span>
+        </label>
+      `).join('');
+    }
+
+    renderOptions('sides',       SIDES,      'checkbox', 'sides');
+    renderOptions('sandwiches',  SANDWICHES, 'radio',    'sandwich');
+    renderOptions('drinks',      DRINKS,     'radio',    'drink');
+
+    function getProperty() {
+      const url = new URL(window.location.href);
+      return url.searchParams.get('p') || 'casco_bay';
+    }
+
+    function showError(msg) {
+      const b = document.getElementById('banner-error');
+      b.textContent = msg;
+      b.classList.remove('hidden');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    function hideError() {
+      document.getElementById('banner-error').classList.add('hidden');
+    }
+
+    document.getElementById('order-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideError();
+      const form = e.target;
+      const btn = document.getElementById('submit-btn');
+
+      const items = {};
+      SIDES.forEach((s) => {
+        items[s.id] = form.querySelector(`input[name="sides"][value="${s.id}"]`).checked;
+      });
+      const sandwich = form.querySelector('input[name="sandwich"]:checked')?.value || 'none';
+      const drink    = form.querySelector('input[name="drink"]:checked')?.value    || 'none';
+
+      const payload = {
+        guest_name:  form.guest_name.value.trim(),
+        room_number: form.room_number.value.trim(),
+        items, sandwich, drink,
+        notes: form.notes.value.trim(),
+      };
+
+      if (!payload.guest_name) {
+        showError('Please enter your name.');
+        return;
+      }
+      const hasAny = Object.values(items).some(Boolean) || sandwich !== 'none' || drink !== 'none';
+      if (!hasAny) {
+        showError('Please select at least one item.');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Submitting…';
+      try {
+        const res = await fetch(`${window.__API_BASE}/api/public/dinner-orders/${getProperty()}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || `HTTP ${res.status}`);
+        }
+        form.classList.add('hidden');
+        document.getElementById('success').classList.remove('hidden');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } catch (err) {
+        showError(err.message || 'Could not submit. Please ask the front desk for help.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Submit order';
+      }
+    });
+
+    document.getElementById('new-order-btn').addEventListener('click', () => {
+      const form = document.getElementById('order-form');
+      form.reset();
+      renderOptions('sandwiches', SANDWICHES, 'radio', 'sandwich');
+      renderOptions('drinks',     DRINKS,     'radio', 'drink');
+      form.classList.remove('hidden');
+      document.getElementById('success').classList.add('hidden');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  </script>
+</body>
+</html>
