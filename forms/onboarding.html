@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f5f5f7" />
+  <title>New Hire Onboarding</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="hotel-brand">
+      <div class="hotel-name" id="hotel-name">Loading…</div>
+      <div class="company-name" id="company-name">&nbsp;</div>
+    </header>
+
+    <div id="banner-error" class="banner error hidden"></div>
+
+    <div id="loading" class="card">
+      <p class="muted" style="margin:0;">Loading your onboarding packet…</p>
+    </div>
+
+    <div id="invalid" class="card hidden">
+      <h2 class="section-title">Link unavailable</h2>
+      <p id="invalid-reason" style="color:var(--ink-body);margin:0;">This link is invalid or has expired. Please contact your manager for a new invitation.</p>
+    </div>
+
+    <div id="success" class="card hidden">
+      <div class="success-state">
+        <div class="check"></div>
+        <h2>Submitted</h2>
+        <p>Thank you. Your onboarding packet has been submitted. Your manager will be in touch with next steps.</p>
+      </div>
+    </div>
+
+    <div id="wizard" class="hidden">
+      <h1 class="page-title">New Hire Onboarding</h1>
+      <p class="page-subtitle" id="welcome-sub">&nbsp;</p>
+
+      <div class="stepper" id="stepper">
+        <div class="step active" data-step="1"><span class="dot">1</span><span class="label">Your info</span></div>
+        <div class="step" data-step="2"><span class="dot">2</span><span class="label">Pay &amp; benefits</span></div>
+        <div class="step" data-step="3"><span class="dot">3</span><span class="label">Handbook &amp; sign</span></div>
+      </div>
+
+      <!-- Step 1: personal info -->
+      <section class="card step-panel" data-step="1">
+        <h2 class="section-title">Part 1 — Your information</h2>
+        <div class="grid-2">
+          <div class="field">
+            <label for="f-name">Full name</label>
+            <input type="text" id="f-name" autocomplete="name" />
+          </div>
+          <div class="field">
+            <label for="f-date-hired">Date hired</label>
+            <input type="date" id="f-date-hired" />
+          </div>
+          <div class="field full">
+            <label for="f-address">Home address</label>
+            <input type="text" id="f-address" autocomplete="street-address" />
+          </div>
+          <div class="field">
+            <label for="f-dob">Date of birth</label>
+            <input type="date" id="f-dob" />
+          </div>
+          <div class="field">
+            <label for="f-ssn">Social Security Number</label>
+            <input type="text" id="f-ssn" inputmode="numeric" placeholder="XXX-XX-XXXX" />
+          </div>
+          <div class="field">
+            <label for="f-phone">Phone</label>
+            <input type="tel" id="f-phone" autocomplete="tel" />
+          </div>
+          <div class="field">
+            <label for="f-email">Email</label>
+            <input type="email" id="f-email" autocomplete="email" />
+          </div>
+          <div class="field">
+            <label for="f-position">Position</label>
+            <input type="text" id="f-position" />
+          </div>
+          <div class="field">
+            <label for="f-pay-rate">Pay rate</label>
+            <input type="text" id="f-pay-rate" placeholder="$ / hour" />
+          </div>
+          <div class="field full">
+            <label>Status</label>
+            <div class="options">
+              <label class="option"><input type="radio" name="status_type" value="FT" /><span class="indicator"></span>Full-time</label>
+              <label class="option"><input type="radio" name="status_type" value="PT" /><span class="indicator"></span>Part-time</label>
+              <label class="option"><input type="radio" name="status_type" value="Seasonal" /><span class="indicator"></span>Seasonal</label>
+            </div>
+          </div>
+        </div>
+
+        <h3 class="subsection-title">Emergency contact</h3>
+        <div class="grid-2">
+          <div class="field">
+            <label for="f-em-name">Name</label>
+            <input type="text" id="f-em-name" />
+          </div>
+          <div class="field">
+            <label for="f-em-relationship">Relationship</label>
+            <input type="text" id="f-em-relationship" />
+          </div>
+          <div class="field">
+            <label for="f-em-phone">Phone</label>
+            <input type="tel" id="f-em-phone" />
+          </div>
+        </div>
+
+        <div class="wizard-nav">
+          <span></span>
+          <button class="btn primary" data-next="2">Continue</button>
+        </div>
+      </section>
+
+      <!-- Step 2: direct deposit + 401k -->
+      <section class="card step-panel hidden" data-step="2">
+        <h2 class="section-title">Part 2 — Direct deposit &amp; 401(k)</h2>
+
+        <p class="muted" style="margin:0 0 16px;">
+          I authorize <span id="company-name-inline"></span> to deposit my wages directly into the bank account listed below. This authorization remains in effect until I provide written notice to change or cancel it.
+        </p>
+
+        <div class="grid-2">
+          <div class="field full">
+            <label for="f-bank">Bank name</label>
+            <input type="text" id="f-bank" />
+          </div>
+          <div class="field full">
+            <label>Account type</label>
+            <div class="options">
+              <label class="option"><input type="radio" name="account_type" value="checking" /><span class="indicator"></span>Checking</label>
+              <label class="option"><input type="radio" name="account_type" value="savings" /><span class="indicator"></span>Savings</label>
+            </div>
+          </div>
+          <div class="field">
+            <label for="f-routing">Routing number (9 digits)</label>
+            <input type="text" id="f-routing" inputmode="numeric" />
+          </div>
+          <div class="field">
+            <label for="f-account">Account number</label>
+            <input type="text" id="f-account" inputmode="numeric" />
+          </div>
+          <div class="field full">
+            <label>This is a</label>
+            <div class="options">
+              <label class="option"><input type="radio" name="deposit_status" value="new" /><span class="indicator"></span>New direct deposit</label>
+              <label class="option"><input type="radio" name="deposit_status" value="change" /><span class="indicator"></span>Change to existing</label>
+            </div>
+          </div>
+        </div>
+
+        <h3 class="subsection-title">401(k) election</h3>
+        <div class="options" style="flex-direction:column;align-items:stretch;">
+          <label class="option checkbox">
+            <input type="radio" name="elect_401k" value="yes" />
+            <span class="indicator"></span>
+            <span>I elect to participate in the company 401(k) plan</span>
+          </label>
+          <label class="option checkbox">
+            <input type="radio" name="elect_401k" value="no" />
+            <span class="indicator"></span>
+            <span>I decline to participate at this time</span>
+          </label>
+        </div>
+
+        <div id="contrib-fields" class="grid-2 hidden" style="margin-top:16px;">
+          <div class="field">
+            <label for="f-contrib-pct">Contribution percent (per pay period)</label>
+            <input type="text" id="f-contrib-pct" inputmode="decimal" placeholder="e.g. 5" />
+          </div>
+          <div class="field">
+            <label for="f-contrib-amt">…or fixed amount</label>
+            <input type="text" id="f-contrib-amt" inputmode="decimal" placeholder="$ per pay period" />
+          </div>
+        </div>
+
+        <div class="wizard-nav">
+          <button class="btn secondary" data-prev="1">Back</button>
+          <button class="btn primary" data-next="3">Continue</button>
+        </div>
+      </section>
+
+      <!-- Step 3: handbook + acknowledgment + signature -->
+      <section class="card step-panel hidden" data-step="3">
+        <h2 class="section-title">Part 3 — Handbook &amp; acknowledgment</h2>
+        <p class="muted" style="margin:0 0 12px;">
+          Please review the employee handbook below. You may also <a id="handbook-link" href="handbook.html" target="_blank" rel="noopener">open it in a new tab</a> for easier reading.
+        </p>
+
+        <div class="handbook-scroll" id="handbook-scroll">
+          <p><em>Loading handbook…</em></p>
+        </div>
+
+        <h3 class="subsection-title">Policy acknowledgments</h3>
+        <div class="options" style="flex-direction:column;align-items:stretch;">
+          <label class="option checkbox">
+            <input type="checkbox" data-ack="at_will" />
+            <span class="indicator"></span>
+            <span><strong>At-will employment.</strong> I understand my employment is at-will and may be ended by me or the company at any time.</span>
+          </label>
+          <label class="option checkbox">
+            <input type="checkbox" data-ack="handbook" />
+            <span class="indicator"></span>
+            <span><strong>Employee handbook.</strong> I acknowledge receipt of the handbook and agree to abide by all policies, including attendance, cell phone, and dress-code procedures.</span>
+          </label>
+          <label class="option checkbox">
+            <input type="checkbox" data-ack="mepl" />
+            <span class="indicator"></span>
+            <span><strong>Maine Earned Paid Leave (MEPL).</strong> I understand I accrue 1 hour of paid leave per 40 hours worked, up to 40/year, accessible after 120 days.</span>
+          </label>
+          <label class="option checkbox">
+            <input type="checkbox" data-ack="harassment" />
+            <span class="indicator"></span>
+            <span><strong>Maine sexual harassment &amp; protected leave.</strong> I have received the policies against harassment and understand my rights regarding domestic-violence, jury, and voting leave.</span>
+          </label>
+          <label class="option checkbox">
+            <input type="checkbox" data-ack="safety" />
+            <span class="indicator"></span>
+            <span><strong>Maine VDT &amp; OSHA HazCom safety.</strong> I have received basic safety orientation and chemical-hazard communication.</span>
+          </label>
+        </div>
+
+        <h3 class="subsection-title">Signature</h3>
+        <div class="grid-2">
+          <div class="field">
+            <label for="f-typed-name">Type your full name</label>
+            <input type="text" id="f-typed-name" autocomplete="name" />
+          </div>
+          <div class="field">
+            <label for="f-typed-date">Date</label>
+            <input type="date" id="f-typed-date" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Draw your signature</label>
+          <div class="sig-wrap">
+            <canvas id="sig-pad" width="600" height="180"></canvas>
+            <button type="button" class="btn secondary sig-clear" id="sig-clear">Clear</button>
+          </div>
+          <p class="muted" style="margin:6px 0 0;font-size:12px;">Use mouse or finger. Signature is required.</p>
+        </div>
+
+        <div class="wizard-nav">
+          <button class="btn secondary" data-prev="2">Back</button>
+          <button class="btn primary" id="submit-btn">Submit packet</button>
+        </div>
+      </section>
+    </div>
+
+    <footer class="foot" id="footer-company">&nbsp;</footer>
+  </div>
+
+  <script>
+    window.__API_BASE = window.__API_BASE || '__API_BASE__';
+
+    const HOTEL_NAMES = {
+      casco_bay: 'Casco Bay Hotel',
+      saco_bay:  'Saco Bay Hotel',
+    };
+    const COMPANY_NAMES = {
+      casco_bay: 'Northeastern Group Management',
+      saco_bay:  'Northeastern Hospitality Management',
+    };
+
+    function getToken() {
+      return new URL(window.location.href).searchParams.get('token') || '';
+    }
+
+    function showError(msg) {
+      const b = document.getElementById('banner-error');
+      b.textContent = msg;
+      b.classList.remove('hidden');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    function hideError() {
+      document.getElementById('banner-error').classList.add('hidden');
+    }
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
+      );
+    }
+
+    let employee = null;
+    let property = 'casco_bay';
+
+    async function init() {
+      const token = getToken();
+      if (!token) {
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('invalid').classList.remove('hidden');
+        return;
+      }
+      try {
+        const res = await fetch(`${window.__API_BASE}/api/public/onboarding/init`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          document.getElementById('loading').classList.add('hidden');
+          const inv = document.getElementById('invalid');
+          inv.classList.remove('hidden');
+          document.getElementById('invalid-reason').textContent = data.error || 'This link is invalid or has expired.';
+          return;
+        }
+        employee = data;
+        property = data.property || 'casco_bay';
+        applyBranding();
+        prefillKnown();
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('wizard').classList.remove('hidden');
+        loadHandbookPreview();
+      } catch (e) {
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('invalid').classList.remove('hidden');
+        document.getElementById('invalid-reason').textContent = 'Could not load this onboarding packet. Please try again later.';
+      }
+    }
+
+    function applyBranding() {
+      const hotel = HOTEL_NAMES[property] || '';
+      const company = COMPANY_NAMES[property] || '';
+      document.getElementById('hotel-name').textContent = hotel;
+      document.getElementById('company-name').textContent = company;
+      document.getElementById('company-name-inline').textContent = company;
+      document.getElementById('footer-company').textContent = company;
+      document.getElementById('welcome-sub').textContent =
+        `Welcome, ${employee.name || ''}. This packet should take about 10 minutes.`;
+      document.title = `New Hire Onboarding · ${hotel}`;
+      document.getElementById('handbook-link').href = `handbook.html?p=${encodeURIComponent(property)}`;
+    }
+
+    function prefillKnown() {
+      if (employee.name) document.getElementById('f-name').value = employee.name;
+      if (employee.email) document.getElementById('f-email').value = employee.email;
+    }
+
+    async function loadHandbookPreview() {
+      try {
+        const res = await fetch(`handbook.html?p=${encodeURIComponent(property)}`);
+        if (!res.ok) throw new Error('handbook fetch failed');
+        const txt = await res.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(txt, 'text/html');
+        const main = doc.querySelector('#handbook-body') || doc.body;
+        document.getElementById('handbook-scroll').innerHTML = main.innerHTML;
+      } catch (e) {
+        document.getElementById('handbook-scroll').innerHTML =
+          '<p class="muted">Could not load handbook preview. Please open it in a new tab.</p>';
+      }
+    }
+
+    // Stepper navigation
+    document.addEventListener('click', (e) => {
+      const next = e.target.closest('[data-next]');
+      const prev = e.target.closest('[data-prev]');
+      if (next) goToStep(parseInt(next.dataset.next, 10));
+      if (prev) goToStep(parseInt(prev.dataset.prev, 10));
+    });
+
+    function goToStep(n) {
+      document.querySelectorAll('.step-panel').forEach((p) => {
+        p.classList.toggle('hidden', parseInt(p.dataset.step, 10) !== n);
+      });
+      document.querySelectorAll('.stepper .step').forEach((s) => {
+        const sn = parseInt(s.dataset.step, 10);
+        s.classList.toggle('active', sn === n);
+        s.classList.toggle('done', sn < n);
+      });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // 401k toggle
+    document.querySelectorAll('input[name="elect_401k"]').forEach((el) => {
+      el.addEventListener('change', () => {
+        const yes = document.querySelector('input[name="elect_401k"]:checked')?.value === 'yes';
+        document.getElementById('contrib-fields').classList.toggle('hidden', !yes);
+      });
+    });
+
+    // Signature pad
+    (function initSigPad() {
+      const canvas = document.getElementById('sig-pad');
+      const ctx = canvas.getContext('2d');
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = '#1d1d1f';
+      let drawing = false;
+      let hasInk = false;
+      function pos(e) {
+        const r = canvas.getBoundingClientRect();
+        const t = e.touches ? e.touches[0] : e;
+        return { x: (t.clientX - r.left) * (canvas.width / r.width), y: (t.clientY - r.top) * (canvas.height / r.height) };
+      }
+      function start(e) { e.preventDefault(); drawing = true; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); }
+      function move(e) { if (!drawing) return; e.preventDefault(); const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); hasInk = true; }
+      function end() { drawing = false; }
+      canvas.addEventListener('mousedown', start);
+      canvas.addEventListener('mousemove', move);
+      window.addEventListener('mouseup', end);
+      canvas.addEventListener('touchstart', start, { passive: false });
+      canvas.addEventListener('touchmove', move, { passive: false });
+      canvas.addEventListener('touchend', end);
+      document.getElementById('sig-clear').addEventListener('click', () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        hasInk = false;
+      });
+      window.__sigHasInk = () => hasInk;
+      window.__sigDataUrl = () => canvas.toDataURL('image/png');
+    })();
+
+    document.getElementById('submit-btn').addEventListener('click', async (e) => {
+      e.preventDefault();
+      hideError();
+      const answers = collectAnswers();
+      const err = validateClient(answers);
+      if (err) {
+        showError(err);
+        return;
+      }
+      const btn = e.target;
+      btn.disabled = true;
+      btn.textContent = 'Submitting…';
+      try {
+        const res = await fetch(`${window.__API_BASE}/api/public/onboarding/submit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: getToken(), answers }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `Submit failed (HTTP ${res.status})`);
+        document.getElementById('wizard').classList.add('hidden');
+        document.getElementById('success').classList.remove('hidden');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } catch (err) {
+        showError(err.message);
+        btn.disabled = false;
+        btn.textContent = 'Submit packet';
+      }
+    });
+
+    function val(id) {
+      return (document.getElementById(id).value || '').trim();
+    }
+    function radio(name) {
+      const el = document.querySelector(`input[name="${name}"]:checked`);
+      return el ? el.value : '';
+    }
+
+    function collectAnswers() {
+      const ack = {};
+      document.querySelectorAll('input[type="checkbox"][data-ack]').forEach((c) => {
+        ack[c.dataset.ack] = c.checked;
+      });
+      const elect = radio('elect_401k') === 'yes';
+      return {
+        name: val('f-name'),
+        date_hired: val('f-date-hired'),
+        address: val('f-address'),
+        dob: val('f-dob'),
+        ssn: val('f-ssn'),
+        phone: val('f-phone'),
+        email: val('f-email'),
+        position: val('f-position'),
+        pay_rate: val('f-pay-rate'),
+        status_type: radio('status_type'),
+        emergency_name: val('f-em-name'),
+        emergency_relationship: val('f-em-relationship'),
+        emergency_phone: val('f-em-phone'),
+        bank_name: val('f-bank'),
+        account_type: radio('account_type'),
+        routing_number: val('f-routing'),
+        account_number: val('f-account'),
+        deposit_status: radio('deposit_status'),
+        elect_401k: elect,
+        contrib_percent: elect ? val('f-contrib-pct') : '',
+        contrib_amount: elect ? val('f-contrib-amt') : '',
+        ack,
+        typed_name: val('f-typed-name'),
+        typed_date: val('f-typed-date'),
+        signature_png: window.__sigHasInk() ? window.__sigDataUrl() : '',
+      };
+    }
+
+    function validateClient(a) {
+      const required = [
+        ['name', 'Full name'], ['address', 'Home address'], ['dob', 'Date of birth'],
+        ['ssn', 'SSN'], ['phone', 'Phone'], ['email', 'Email'], ['position', 'Position'],
+        ['emergency_name', 'Emergency contact name'], ['emergency_phone', 'Emergency contact phone'],
+        ['typed_name', 'Typed name'], ['typed_date', 'Date signed'],
+      ];
+      for (const [k, label] of required) {
+        if (!a[k]) return `${label} is required.`;
+      }
+      const requiredAcks = ['at_will', 'handbook', 'mepl', 'harassment', 'safety'];
+      for (const k of requiredAcks) {
+        if (!a.ack[k]) return 'Please acknowledge all five policies before submitting.';
+      }
+      if (!a.signature_png) return 'Please draw your signature in the box.';
+      return null;
+    }
+
+    init();
+  </script>
+</body>
+</html>

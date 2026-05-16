@@ -45,6 +45,9 @@ Globals:
         TABLE_DINNER_ORDERS: !Ref DinnerOrdersTable
         TABLE_HOUSEKEEPING: !Ref HousekeepingTable
         TABLE_REPORTS: !Ref CachedReportsTable
+        TABLE_EMPLOYEES: !Ref EmployeesTable
+        EMPLOYEES_FILLED_BUCKET: !Ref EmployeesFilledBucket
+        PUBLIC_FORMS_BUCKET: !Ref PublicFormsBucket
         USER_POOL_ID: !Ref UserPool
         USER_POOL_CLIENT_ID: !Ref UserPoolClient
         CLOUDBEDS_SECRET_PREFIX: !Sub '${StackPrefix}/cloudbeds'
@@ -267,6 +270,31 @@ Resources:
           KeyType: HASH
         - AttributeName: SK
           KeyType: RANGE
+
+  EmployeesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${StackPrefix}-employees'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+        - AttributeName: GSI1PK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: TokenIndex
+          KeySchema:
+            - AttributeName: GSI1PK
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
 
   # ================================================================
   # API Gateway HTTP API + Cognito JWT Authorizer
@@ -635,6 +663,73 @@ Resources:
             Resource: !Sub '${PublicFormsBucket.Arn}/*'
 
   # ================================================================
+  # Employees filled-form bucket — private. Holds the rendered HTML
+  # of each submitted onboarding packet, fetched via pre-signed URL
+  # from the admin UI.
+  # ================================================================
+  EmployeesFilledBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${StackPrefix}-employees-filled-${AWS::AccountId}'
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  # ----------------------------------------------------------------
+  # Employees onboarding Lambda
+  # /api/admin/employees/*       — authenticated owner-only console
+  # /api/public/onboarding/*     — unauthenticated form submit (token-gated)
+  # ----------------------------------------------------------------
+  EmployeesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${StackPrefix}-employees'
+      CodeUri: backend/
+      Handler: employees.handler.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref EmployeesTable
+        - S3CrudPolicy:
+            BucketName: !Ref EmployeesFilledBucket
+        - S3ReadPolicy:
+            BucketName: !Ref PublicFormsBucket
+      Events:
+        Get:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: GET, Path: '/api/admin/employees/{proxy+}' }
+        GetRoot:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: GET, Path: '/api/admin/employees' }
+        Post:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: POST, Path: '/api/admin/employees/{proxy+}' }
+        PostRoot:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: POST, Path: '/api/admin/employees' }
+        Put:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: PUT, Path: '/api/admin/employees/{proxy+}' }
+        Delete:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: DELETE, Path: '/api/admin/employees/{proxy+}' }
+        PublicPost:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: '/api/public/onboarding/{proxy+}'
+            Auth: { Authorizer: NONE }
+
+  # ================================================================
   # S3 + CloudFront for frontend (optional)
   # ================================================================
   FrontendBucket:
@@ -777,6 +872,15 @@ Outputs:
   HousekeepingFormUrl:
     Description: Public URL for the housekeeping form
     Value: !Sub 'http://${PublicFormsBucket}.s3-website-${AWS::Region}.amazonaws.com/housekeeping.html'
+  OnboardingFormUrl:
+    Description: Public URL for the employee onboarding form (token appended per invite)
+    Value: !Sub 'http://${PublicFormsBucket}.s3-website-${AWS::Region}.amazonaws.com/onboarding.html'
+  HandbookUrl:
+    Description: Public URL for the employee handbook
+    Value: !Sub 'http://${PublicFormsBucket}.s3-website-${AWS::Region}.amazonaws.com/handbook.html'
+  EmployeesFilledBucket:
+    Description: Private S3 bucket holding filled onboarding submissions
+    Value: !Ref EmployeesFilledBucket
   CloudFrontUrl:
     Description: CloudFront distribution URL (frontend)
     Condition: ShouldDeployFrontend

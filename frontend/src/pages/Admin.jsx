@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import Banner from '../components/Banner'
+import EmployeeAdmin from '../components/EmployeeAdmin'
 import { ROLES } from '../config'
 import { useApi } from '../hooks/useApi'
 
@@ -139,6 +140,9 @@ export default function Admin() {
           </tbody>
         </table>
       </div>
+
+      <hr className="border-line-subtle my-6" />
+      <EmployeeAdmin />
     </div>
   )
 }

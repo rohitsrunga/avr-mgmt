@@ -206,8 +206,8 @@ def saco_bay_rooms():
     return [f"{floor}{n:02d}" for floor in (1, 2, 3, 4) for n in range(1, 27)]
 
 
-def get_table(client, stack, suffix):
-    return client.Table(f"{stack}-{suffix}")
+def get_table(client, prefix, suffix):
+    return client.Table(f"{prefix}-{suffix}")
 
 
 def batch_put(table, items):
@@ -299,6 +299,8 @@ def seed_rooms(table, property_id, rooms, flags=None):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--stack", default="avr-mgmt")
+    parser.add_argument("--prefix", default="avr",
+                        help="Resource-name prefix used in template.yaml StackPrefix parameter")
     parser.add_argument("--region", default="us-east-1")
     parser.add_argument("--properties", nargs="+", default=["casco_bay", "saco_bay"])
     parser.add_argument("--reset", action="store_true",
@@ -306,10 +308,10 @@ def main():
     args = parser.parse_args()
 
     dynamodb = boto3.resource("dynamodb", region_name=args.region)
-    shift_tbl = get_table(dynamodb, args.stack, "shift-tasks")
-    inv_tbl = get_table(dynamodb, args.stack, "inventory")
-    chk_tbl = get_table(dynamodb, args.stack, "checklists")
-    room_tbl = get_table(dynamodb, args.stack, "rooms")
+    shift_tbl = get_table(dynamodb, args.prefix, "shift-tasks")
+    inv_tbl = get_table(dynamodb, args.prefix, "inventory")
+    chk_tbl = get_table(dynamodb, args.prefix, "checklists")
+    room_tbl = get_table(dynamodb, args.prefix, "rooms")
 
     for pid in args.properties:
         print(f"\nSeeding {pid}...")
