@@ -8,12 +8,14 @@ point used by the static S3 form. Authenticated routes under /api/dinner-orders/
 power the staff dashboard.
 """
 import uuid
-from datetime import datetime, timezone
+from collections import defaultdict
+from datetime import date as date_cls, datetime, timedelta, timezone
 
 from shared.auth import ALL_ROLES, authorize_property, get_identity
 from shared.dynamo import query_pk, table, to_dynamo
-from shared.response import bad_request, not_found, ok, server_error
+from shared.response import bad_request, forbidden, not_found, ok, server_error
 from shared.router import Router, parse_body, query_params
+from shared.settings import VALID_PROPERTIES, is_feature_enabled
 
 router = Router()
 TBL = lambda: table("TABLE_DINNER_ORDERS")
@@ -21,7 +23,15 @@ TBL = lambda: table("TABLE_DINNER_ORDERS")
 VALID_SIDES = {"salad", "cookie", "chips", "mac_cheese"}
 VALID_SANDWICH = {"none", "chicken", "veggie"}
 VALID_DRINK = {"none", "water", "soda", "juice"}
-ENABLED_PROPERTIES = {"casco_bay"}
+FEATURE_ID = "dinner"
+
+
+def _check_feature(pid):
+    if pid not in VALID_PROPERTIES:
+        return bad_request(f"unknown property: {pid}")
+    if not is_feature_enabled(pid, FEATURE_ID):
+        return forbidden("Dinner orders are disabled for this property")
+    return None
 
 
 def _now():
@@ -84,8 +94,9 @@ def _validate_order(body):
 @router.post("/api/public/dinner-orders/{property_id}")
 def public_submit(event, params):
     pid = params["property_id"]
-    if pid not in ENABLED_PROPERTIES:
-        return bad_request("dinner orders not available for this property")
+    err = _check_feature(pid)
+    if err:
+        return err
     body = parse_body(event)
     cleaned, err = _validate_order(body)
     if err:
@@ -124,6 +135,79 @@ def list_orders(event, params):
         orders = [o for o in orders if o["status"] == status_filter]
     orders.sort(key=lambda o: o["submitted_at"])
     return ok({"date": date, "orders": orders})
+
+
+@router.get("/api/dinner-orders/{property_id}/summary")
+def order_summary(event, params):
+    """Per-day counts + most-popular items (powers the dashboard charts)."""
+    pid = params["property_id"]
+    err = authorize_property(event, pid, ALL_ROLES)
+    if err:
+        return err
+    qs = query_params(event)
+    day = qs.get("date") or _today()
+    raw = query_pk(TBL(), f"PROPERTY#{pid}", f"ORDER#{day}#")
+    orders = [_serialize(it) for it in raw]
+    total = len(orders)
+    open_count = sum(1 for o in orders if o["status"] == "open")
+    completed = sum(1 for o in orders if o["status"] == "completed")
+
+    def count_dict(values):
+        freq = defaultdict(int)
+        for v in values:
+            if v:
+                freq[v] += 1
+        out = [
+            {"item": k, "count": v, "percentage": round(v / total * 100, 1) if total else 0}
+            for k, v in freq.items()
+        ]
+        return sorted(out, key=lambda x: x["count"], reverse=True)
+
+    sides_values = []
+    for o in orders:
+        for sid, present in (o.get("items") or {}).items():
+            if present:
+                sides_values.append(sid)
+    popular = {
+        "sides": count_dict(sides_values),
+        "sandwiches": count_dict([o.get("sandwich") for o in orders if (o.get("sandwich") or "none") != "none"]),
+        "drinks": count_dict([o.get("drink") for o in orders if (o.get("drink") or "none") != "none"]),
+    }
+    return ok({
+        "date": day,
+        "total": total,
+        "open": open_count,
+        "completed": completed,
+        "popular_items": popular,
+    })
+
+
+@router.get("/api/dinner-orders/{property_id}/history")
+def order_history(event, params):
+    """Last N days of order volume for the trend strip."""
+    pid = params["property_id"]
+    err = authorize_property(event, pid, ALL_ROLES)
+    if err:
+        return err
+    qs = query_params(event)
+    try:
+        days = max(1, min(30, int(qs.get("days") or 7)))
+    except ValueError:
+        days = 7
+    today = date_cls.fromisoformat(_today())
+    out = []
+    for i in range(days - 1, -1, -1):
+        d = today - timedelta(days=i)
+        ds = d.isoformat()
+        rows = query_pk(TBL(), f"PROPERTY#{pid}", f"ORDER#{ds}#")
+        if d == today:
+            label = "Today"
+        elif d == today - timedelta(days=1):
+            label = "Yesterday"
+        else:
+            label = d.strftime("%a, %b %d")
+        out.append({"date": ds, "total": len(rows), "label": label})
+    return ok({"history": out})
 
 
 @router.put("/api/dinner-orders/{property_id}/{order_id}")

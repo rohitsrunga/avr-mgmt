@@ -46,8 +46,13 @@ Globals:
         TABLE_HOUSEKEEPING: !Ref HousekeepingTable
         TABLE_REPORTS: !Ref CachedReportsTable
         TABLE_EMPLOYEES: !Ref EmployeesTable
+        TABLE_BUSINESS_CASE: !Ref BusinessCaseTable
+        TABLE_GROUP_CONTRACTS: !Ref GroupContractsTable
+        TABLE_INSPECTIONS: !Ref InspectionsTable
+        TABLE_SETTINGS: !Ref SettingsTable
         EMPLOYEES_FILLED_BUCKET: !Ref EmployeesFilledBucket
         PUBLIC_FORMS_BUCKET: !Ref PublicFormsBucket
+        INSPECTION_PHOTOS_BUCKET: !Ref InspectionPhotosBucket
         USER_POOL_ID: !Ref UserPool
         USER_POOL_CLIENT_ID: !Ref UserPoolClient
         CLOUDBEDS_SECRET_PREFIX: !Sub '${StackPrefix}/cloudbeds'
@@ -296,6 +301,124 @@ Resources:
           Projection:
             ProjectionType: ALL
 
+  # ----------------------------------------------------------------
+  # Business Case — daily marketing/business tasks (Casco Bay)
+  # PK = PROPERTY#<id>
+  # SK = DAILY#<YYYY-MM-DD>#TASK#<task_id>
+  # ----------------------------------------------------------------
+  BusinessCaseTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${StackPrefix}-business-case'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+
+  # ----------------------------------------------------------------
+  # Group Contracts — group bookings + activity log (Casco Bay)
+  # PK = PROPERTY#<id>
+  # SK = CONTRACT#<contract_id>             (contract record)
+  # SK = CONTRACT#<contract_id>#LOG#<ts>    (activity note)
+  # ----------------------------------------------------------------
+  GroupContractsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${StackPrefix}-group-contracts'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+
+  # ----------------------------------------------------------------
+  # Inspections — room inspections, issues, inspector roster (Casco)
+  # PK = PROPERTY#<id>
+  # SK patterns:
+  #   INSPECTOR#<inspector_id>
+  #   INSPECTION#<YYYY-MM-DD>#<inspection_id>
+  #   ISSUE#<issue_id>
+  # ----------------------------------------------------------------
+  InspectionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${StackPrefix}-inspections'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+
+  # ----------------------------------------------------------------
+  # Settings — per-property feature flags (owner-configurable from
+  # the Admin tab). PK = PROPERTY#<id>, SK = FEATURES.
+  # An item's `enabled` attribute is a string-set of feature ids;
+  # absence of an item means "all features enabled" (default).
+  # ----------------------------------------------------------------
+  SettingsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${StackPrefix}-settings'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+
+  # ================================================================
+  # Private S3 bucket for inspection before/after photos.
+  # Backend issues short-lived presigned PUT (upload) and GET (view)
+  # URLs. Bucket itself blocks all public access.
+  # ================================================================
+  InspectionPhotosBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${StackPrefix}-inspection-photos-${AWS::AccountId}'
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ['*']
+            AllowedMethods: [GET, PUT]
+            AllowedOrigins: ['*']
+            ExposedHeaders: [ETag]
+            MaxAge: 3600
+
   # ================================================================
   # API Gateway HTTP API + Cognito JWT Authorizer
   # ================================================================
@@ -382,6 +505,20 @@ Resources:
         Delete:
           Type: HttpApi
           Properties: { ApiId: !Ref HttpApi, Method: DELETE, Path: '/api/inventory/{proxy+}' }
+        PublicGet:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: '/api/public/inventory/{proxy+}'
+            Auth: { Authorizer: NONE }
+        PublicPost:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: '/api/public/inventory/{proxy+}'
+            Auth: { Authorizer: NONE }
 
   ChecklistsFunction:
     Type: AWS::Serverless::Function
@@ -472,6 +609,8 @@ Resources:
                 - cognito-idp:ListUsers
                 - cognito-idp:AdminGetUser
               Resource: !GetAtt UserPool.Arn
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SettingsTable
       Events:
         Get:
           Type: HttpApi
@@ -500,6 +639,8 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref DinnerOrdersTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref SettingsTable
       Events:
         Get:
           Type: HttpApi
@@ -729,6 +870,133 @@ Resources:
             Path: '/api/public/onboarding/{proxy+}'
             Auth: { Authorizer: NONE }
 
+  # ----------------------------------------------------------------
+  # Business Case — daily marketing tasks (Casco Bay)
+  # /api/business-case/*    — authenticated dashboard
+  # ----------------------------------------------------------------
+  BusinessCaseFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${StackPrefix}-business-case'
+      CodeUri: backend/
+      Handler: business_case.handler.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref BusinessCaseTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref SettingsTable
+      Events:
+        Get:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: GET, Path: '/api/business-case/{proxy+}' }
+        Post:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: POST, Path: '/api/business-case/{proxy+}' }
+        Put:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: PUT, Path: '/api/business-case/{proxy+}' }
+        Delete:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: DELETE, Path: '/api/business-case/{proxy+}' }
+
+  # ----------------------------------------------------------------
+  # Group Contracts — group bookings (Casco Bay)
+  # /api/groups/*           — authenticated dashboard
+  # /api/public/groups/*    — unauthenticated inquiry form
+  # ----------------------------------------------------------------
+  GroupContractsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${StackPrefix}-group-contracts'
+      CodeUri: backend/
+      Handler: group_contracts.handler.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref GroupContractsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref SettingsTable
+      Events:
+        Get:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: GET, Path: '/api/groups/{proxy+}' }
+        Post:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: POST, Path: '/api/groups/{proxy+}' }
+        Put:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: PUT, Path: '/api/groups/{proxy+}' }
+        Delete:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: DELETE, Path: '/api/groups/{proxy+}' }
+        PublicGet:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: '/api/public/groups/{proxy+}'
+            Auth: { Authorizer: NONE }
+        PublicPost:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: '/api/public/groups/{proxy+}'
+            Auth: { Authorizer: NONE }
+
+  # ----------------------------------------------------------------
+  # Inspections — room inspections + issues (Casco Bay)
+  # /api/inspections/*          — authenticated dashboard
+  # /api/public/inspections/*   — unauthenticated phone walk-form
+  # Photos uploaded directly to InspectionPhotosBucket via presigned URL.
+  # ----------------------------------------------------------------
+  InspectionsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${StackPrefix}-inspections'
+      CodeUri: backend/
+      Handler: inspections.handler.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref InspectionsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref SettingsTable
+        - S3CrudPolicy:
+            BucketName: !Ref InspectionPhotosBucket
+      Events:
+        Get:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: GET, Path: '/api/inspections/{proxy+}' }
+        Post:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: POST, Path: '/api/inspections/{proxy+}' }
+        Put:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: PUT, Path: '/api/inspections/{proxy+}' }
+        Delete:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: DELETE, Path: '/api/inspections/{proxy+}' }
+        PublicGet:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: '/api/public/inspections/{proxy+}'
+            Auth: { Authorizer: NONE }
+        PublicPost:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: '/api/public/inspections/{proxy+}'
+            Auth: { Authorizer: NONE }
+        PublicPut:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: PUT
+            Path: '/api/public/inspections/{proxy+}'
+            Auth: { Authorizer: NONE }
+
   # ================================================================
   # S3 + CloudFront for frontend (optional)
   # ================================================================
@@ -881,6 +1149,18 @@ Outputs:
   EmployeesFilledBucket:
     Description: Private S3 bucket holding filled onboarding submissions
     Value: !Ref EmployeesFilledBucket
+  InspectionPhotosBucket:
+    Description: Private S3 bucket holding inspection before/after photos
+    Value: !Ref InspectionPhotosBucket
+  GroupInquiryFormUrl:
+    Description: Public URL for the group inquiry form
+    Value: !Sub 'http://${PublicFormsBucket}.s3-website-${AWS::Region}.amazonaws.com/groups.html'
+  StockCheckFormUrl:
+    Description: Public URL for the inventory stock-check form
+    Value: !Sub 'http://${PublicFormsBucket}.s3-website-${AWS::Region}.amazonaws.com/inventory.html'
+  InspectionFormUrl:
+    Description: Public URL for the inspection walk-form
+    Value: !Sub 'http://${PublicFormsBucket}.s3-website-${AWS::Region}.amazonaws.com/inspection.html'
   CloudFrontUrl:
     Description: CloudFront distribution URL (frontend)
     Condition: ShouldDeployFrontend

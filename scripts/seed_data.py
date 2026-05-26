@@ -23,9 +23,18 @@ SHIFT_TASKS = {
             "Cash count",
             "Check messages from previous shift, triage",
         ]),
+        ("Grounds", [
+            "Empty interior + exterior trash; water flowers",
+            "Walk perimeter — pick up litter, check landscaping",
+            "Sweep front walkway; inspect dumpster + meter",
+            "Walk floors — clear door trash, return luggage carts",
+        ]),
         ("Breakfast", [
             "Refill breakfast items",
             "Breakfast cleanup: leftovers, wipe counters, put away stuff",
+            "Sweep + mop breakfast area, kitchen, and lobby",
+            "Clean public bathrooms (toilets, urinals, replenish supplies)",
+            "Wash breakfast supplies; reset coffee for next service",
         ]),
         ("Front Desk", [
             "Handle checkouts (account posting)",
@@ -44,6 +53,14 @@ SHIFT_TASKS = {
         ]),
         ("Inventory", [
             "Document breakfast inventory remaining (bananas, croissants, etc.)",
+        ]),
+        ("Marketing & Sales", [
+            "Madalia online booking reviews",
+            "Reply to all reviews",
+            "Leisure outreach",
+            "Transient outreach calls",
+            "Cvent RFP",
+            "Business cases",
         ]),
         ("MEPS", [
             "Coordinate with housekeeping on MEPS room assignments",
@@ -183,12 +200,6 @@ CHECKLISTS = {
 # Rooms
 # ============================================================
 
-CASCO_BAY_ROOMS = [
-    "112", "113", "114", "115", "116", "117", "118", "119", "120", "121",
-    "122", "123", "124", "125", "126", "127", "128", "129", "130", "131",
-    "132", "133", "134", "201", "202", "203", "204", "205",
-]
-
 CASCO_BAY_FLAGS = {
     "131": {"hairdryer": "Not Attached"},
     "134": {"hairdryer": "Not Attached"},
@@ -200,6 +211,11 @@ CASCO_BAY_FLAGS = {
         "keurig": "no",
     },
 }
+
+
+def casco_bay_rooms():
+    # 34 rooms per floor × 4 floors = 136 rooms (101–134, 201–234, 301–334, 401–434)
+    return [f"{floor}{n:02d}" for floor in (1, 2, 3, 4) for n in range(1, 35)]
 
 
 def saco_bay_rooms():
@@ -321,7 +337,7 @@ def main():
         seed_inventory(inv_tbl, pid)
         seed_checklists(chk_tbl, pid)
         if pid == "casco_bay":
-            seed_rooms(room_tbl, pid, CASCO_BAY_ROOMS, CASCO_BAY_FLAGS)
+            seed_rooms(room_tbl, pid, casco_bay_rooms(), CASCO_BAY_FLAGS)
         elif pid == "saco_bay":
             seed_rooms(room_tbl, pid, saco_bay_rooms())
 

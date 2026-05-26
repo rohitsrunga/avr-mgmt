@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { AuthProvider } from './auth/AuthProvider'
+import { FeatureConfigProvider } from './hooks/useFeatureConfig'
 import { PropertyProvider } from './hooks/useProperty'
 import './styles.css'
 
@@ -11,7 +12,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <BrowserRouter>
       <AuthProvider>
         <PropertyProvider>
-          <App />
+          <FeatureConfigProvider>
+            <App />
+          </FeatureConfigProvider>
         </PropertyProvider>
       </AuthProvider>
     </BrowserRouter>

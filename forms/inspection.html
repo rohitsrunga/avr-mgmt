@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f5f5f7" />
+  <title>Room Inspection · Casco Bay Hotel</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .room-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); gap: 6px; }
+    .room-grid button {
+      padding: 10px 4px; border-radius: 10px; font-family: inherit; font-size: 14px;
+      background: #fff; border: 1px solid var(--line); color: var(--ink);
+      font-variant-numeric: tabular-nums; cursor: pointer; min-height: 44px;
+    }
+    .room-grid button.on { background: var(--brand); color: #fff; border-color: var(--brand); }
+    .quick-check { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line-subtle); }
+    .quick-check:last-child { border-bottom: 0; }
+    .quick-check .swatch { display: flex; gap: 6px; }
+    .quick-check .swatch button { padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: #fff; font-family: inherit; font-size: 13px; cursor: pointer; }
+    .quick-check .swatch button.yes.on { background: var(--positive-tint); border-color: rgba(29,138,75,0.4); color: var(--positive); }
+    .quick-check .swatch button.no.on { background: var(--danger-tint); border-color: rgba(191,44,44,0.4); color: var(--danger); }
+    .stars { display: flex; gap: 4px; }
+    .stars button { padding: 6px 8px; border: 0; background: transparent; cursor: pointer; font-size: 22px; line-height: 1; color: var(--line); }
+    .stars button.on { color: #f5a524; }
+    .issue { background: var(--surface-subtle); border: 1px solid var(--line-subtle); border-radius: 12px; padding: 12px; margin-bottom: 10px; }
+    .issue header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .issue header strong { font-size: 14px; }
+    .severity-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .severity-chips button { padding: 6px 10px; border-radius: 999px; font-family: inherit; font-size: 12px; border: 1px solid var(--line); background: #fff; cursor: pointer; }
+    .severity-chips button.on.urgent { background: var(--danger-tint); border-color: rgba(191,44,44,0.4); color: var(--danger); }
+    .severity-chips button.on.standard { background: var(--warning-tint); border-color: rgba(154,103,0,0.4); color: var(--warning); }
+    .severity-chips button.on.minor { background: var(--brand); border-color: var(--brand); color: #fff; }
+    .severity-chips button.on.note { background: var(--surface-sunken); border-color: var(--line-strong); }
+    .photo-preview { display: inline-block; margin-top: 8px; }
+    .photo-preview img { max-width: 120px; max-height: 120px; border-radius: 10px; border: 1px solid var(--line-subtle); }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="brand">
+      <div class="mark">A</div>
+      <div class="meta">
+        <div class="name">Casco Bay Hotel</div>
+        <div class="sub">AVR Hospitality · Room Inspection</div>
+      </div>
+    </header>
+
+    <h1 class="page-title">Room inspection</h1>
+    <p class="page-subtitle" id="page-sub">Pick an inspector and a room to begin.</p>
+
+    <div id="banner-error" class="banner error hidden"></div>
+
+    <section id="step-start" class="card">
+      <div class="section-title">Start</div>
+      <div class="field">
+        <label for="inspector_id">Inspector</label>
+        <select id="inspector_id"><option value="">Choose inspector…</option></select>
+      </div>
+      <div class="field">
+        <label for="inspection_type">Inspection type</label>
+        <select id="inspection_type">
+          <option value="routine">Routine Check</option>
+          <option value="post_checkout">Post-Checkout</option>
+          <option value="post_maintenance">Post-Maintenance</option>
+          <option value="deep_clean">Deep Clean</option>
+          <option value="pre_vip">Pre-VIP</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Room</label>
+        <div class="room-grid" id="room-grid"></div>
+      </div>
+      <button id="start-btn" class="btn primary block" disabled>Start inspection</button>
+    </section>
+
+    <section id="step-inspect" class="hidden">
+      <div class="card">
+        <div class="section-title" id="inspect-title">Inspecting…</div>
+        <div class="field">
+          <label>Overall cleanliness</label>
+          <div class="stars" id="stars"></div>
+        </div>
+        <div class="field">
+          <label for="overall_condition">Overall condition</label>
+          <select id="overall_condition">
+            <option value="">Choose…</option>
+            <option value="excellent">Excellent</option>
+            <option value="good">Good</option>
+            <option value="fair">Fair</option>
+            <option value="poor">Poor</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="general_notes">General notes</label>
+          <textarea id="general_notes" maxlength="2000" placeholder="Anything else for the dashboard?"></textarea>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-title">Quick checks</div>
+        <p class="muted">Tap Yes or No for each item.</p>
+        <div id="quick-checks"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-title">Issues</div>
+        <p class="muted">Add any defects, broken items, or maintenance needs.</p>
+        <div id="issues"></div>
+        <button type="button" id="add-issue-btn" class="btn secondary block">+ Add issue</button>
+      </div>
+
+      <div class="card">
+        <button id="submit-btn" class="btn primary block">Submit inspection</button>
+      </div>
+    </section>
+
+    <div id="success" class="card success-state hidden">
+      <div class="check"></div>
+      <h2>Inspection submitted</h2>
+      <p id="success-message">Recorded. Thank you.</p>
+      <button type="button" class="btn secondary" id="new-btn">New inspection</button>
+    </div>
+
+    <footer class="foot">AVR Hospitality Management</footer>
+  </div>
+
+  <script>
+    window.__API_BASE = window.__API_BASE || '__API_BASE__';
+
+    const QUICK_CHECK_ITEMS = [
+      { id: 'bed_made', label: 'Bed made properly' },
+      { id: 'bathroom_clean', label: 'Bathroom clean' },
+      { id: 'floor_vacuumed', label: 'Floor vacuumed/mopped' },
+      { id: 'windows_clean', label: 'Windows clean' },
+      { id: 'ac_working', label: 'AC/Heat working' },
+      { id: 'tv_working', label: 'TV working' },
+      { id: 'safe_working', label: 'Safe working' },
+      { id: 'fridge_working', label: 'Mini fridge working' },
+      { id: 'towels_stocked', label: 'Towels stocked' },
+      { id: 'toiletries_stocked', label: 'Toiletries stocked' },
+      { id: 'door_lock_working', label: 'Door lock working' },
+      { id: 'lights_working', label: 'All lights working' },
+    ];
+    const CATEGORIES = [
+      { id: 'cleanliness', label: 'Cleanliness', emoji: '🧹' },
+      { id: 'maintenance', label: 'Maintenance', emoji: '🔧' },
+      { id: 'furniture',   label: 'Furniture',   emoji: '🪑' },
+      { id: 'plumbing',    label: 'Plumbing',    emoji: '🚿' },
+      { id: 'electrical',  label: 'Electrical',  emoji: '⚡' },
+      { id: 'hvac',        label: 'HVAC',        emoji: '❄️' },
+      { id: 'safety',      label: 'Safety',      emoji: '🔒' },
+      { id: 'cosmetic',    label: 'Cosmetic',    emoji: '🎨' },
+    ];
+    const SEVERITIES = ['urgent', 'standard', 'minor', 'note'];
+
+    const state = {
+      pid: null,
+      inspectionId: null,
+      roomNumber: null,
+      cleanliness: 0,
+      quickChecks: {},
+      issues: [],
+    };
+
+    function getProperty() {
+      const url = new URL(window.location.href);
+      return url.searchParams.get('p') || 'casco_bay';
+    }
+
+    function showError(msg) {
+      const b = document.getElementById('banner-error');
+      b.textContent = msg;
+      b.classList.remove('hidden');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    function hideError() { document.getElementById('banner-error').classList.add('hidden'); }
+    function escapeHtml(s) {
+      return String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    async function loadStartData() {
+      state.pid = getProperty();
+      try {
+        const res = await fetch(`${window.__API_BASE}/api/public/inspections/${state.pid}/inspectors`);
+        const data = await res.json();
+        const select = document.getElementById('inspector_id');
+        (data.inspectors || []).forEach((i) => {
+          const opt = document.createElement('option');
+          opt.value = i.inspector_id;
+          opt.textContent = i.name;
+          select.appendChild(opt);
+        });
+      } catch (err) {
+        showError('Could not load inspectors. Please refresh.');
+      }
+      renderRoomGrid();
+    }
+
+    function renderRoomGrid() {
+      const grid = document.getElementById('room-grid');
+      grid.innerHTML = '';
+      for (let floor = 1; floor <= 4; floor++) {
+        for (let n = 1; n <= 34; n++) {
+          const rn = `${floor}${String(n).padStart(2, '0')}`;
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = rn;
+          btn.addEventListener('click', () => {
+            state.roomNumber = rn;
+            Array.from(grid.querySelectorAll('button')).forEach((b) => b.classList.toggle('on', b === btn));
+            updateStartButton();
+          });
+          grid.appendChild(btn);
+        }
+      }
+    }
+
+    function updateStartButton() {
+      const ok = state.roomNumber && document.getElementById('inspector_id').value;
+      document.getElementById('start-btn').disabled = !ok;
+    }
+
+    document.getElementById('inspector_id').addEventListener('change', updateStartButton);
+
+    document.getElementById('start-btn').addEventListener('click', async () => {
+      hideError();
+      const btn = document.getElementById('start-btn');
+      btn.disabled = true; btn.textContent = 'Starting…';
+      try {
+        const res = await fetch(`${window.__API_BASE}/api/public/inspections/${state.pid}/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            inspector_id: document.getElementById('inspector_id').value,
+            inspection_type: document.getElementById('inspection_type').value,
+            room_number: state.roomNumber,
+          }),
+        });
+        if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Could not start'); }
+        const data = await res.json();
+        state.inspectionId = data.inspection.inspection_id;
+        document.getElementById('step-start').classList.add('hidden');
+        document.getElementById('step-inspect').classList.remove('hidden');
+        document.getElementById('inspect-title').textContent = `Room ${state.roomNumber} · ${document.getElementById('inspection_type').selectedOptions[0].textContent}`;
+        renderStars(); renderQuickChecks();
+        window.scrollTo({ top: 0 });
+      } catch (err) {
+        showError(err.message);
+      } finally {
+        btn.disabled = false; btn.textContent = 'Start inspection';
+      }
+    });
+
+    function renderStars() {
+      const el = document.getElementById('stars');
+      el.innerHTML = '';
+      for (let i = 1; i <= 5; i++) {
+        const b = document.createElement('button');
+        b.type = 'button'; b.textContent = '★';
+        b.addEventListener('click', () => {
+          state.cleanliness = i;
+          renderStars();
+        });
+        if (i <= state.cleanliness) b.classList.add('on');
+        el.appendChild(b);
+      }
+    }
+
+    function renderQuickChecks() {
+      const list = document.getElementById('quick-checks');
+      list.innerHTML = QUICK_CHECK_ITEMS.map((q) => `
+        <div class="quick-check">
+          <div>${q.label}</div>
+          <div></div>
+          <div class="swatch" data-id="${q.id}">
+            <button type="button" class="yes" data-value="yes">Yes</button>
+            <button type="button" class="no" data-value="no">No</button>
+          </div>
+        </div>
+      `).join('');
+      list.querySelectorAll('.swatch button').forEach((b) => {
+        b.addEventListener('click', () => {
+          const id = b.parentElement.dataset.id;
+          state.quickChecks[id] = b.dataset.value;
+          Array.from(b.parentElement.querySelectorAll('button')).forEach((sib) => {
+            sib.classList.toggle('on', sib === b);
+          });
+        });
+      });
+    }
+
+    function renderIssues() {
+      const wrap = document.getElementById('issues');
+      wrap.innerHTML = '';
+      state.issues.forEach((iss, idx) => {
+        const div = document.createElement('div');
+        div.className = 'issue';
+        div.innerHTML = `
+          <header>
+            <strong>Issue ${idx + 1}</strong>
+            <button type="button" class="btn secondary" data-action="remove" style="min-height: 30px; padding: 4px 10px; font-size: 12px;">Remove</button>
+          </header>
+          <div class="field">
+            <label>Category</label>
+            <select data-field="category">
+              ${CATEGORIES.map((c) => `<option value="${c.id}" ${iss.category === c.id ? 'selected' : ''}>${c.emoji} ${c.label}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field">
+            <label>Severity</label>
+            <div class="severity-chips" data-field="severity">
+              ${SEVERITIES.map((s) => `<button type="button" class="${s} ${iss.severity === s ? 'on' : ''}" data-value="${s}">${s.charAt(0).toUpperCase() + s.slice(1)}</button>`).join('')}
+            </div>
+          </div>
+          <div class="field">
+            <label>Location in room <span class="muted">(optional)</span></label>
+            <input type="text" data-field="location_in_room" maxlength="200" value="${escapeHtml(iss.location_in_room || '')}" placeholder="e.g. by the window" />
+          </div>
+          <div class="field">
+            <label>Description</label>
+            <textarea data-field="description" maxlength="1000" placeholder="What's wrong, what's needed">${escapeHtml(iss.description || '')}</textarea>
+          </div>
+          <div class="field" style="margin-bottom: 0;">
+            <label>Before photo <span class="muted">(optional)</span></label>
+            <input type="file" accept="image/*" capture="environment" data-field="photo" />
+            <div class="photo-preview ${iss.beforePhotoUrl ? '' : 'hidden'}">
+              ${iss.beforePhotoUrl ? `<img src="${iss.beforePhotoUrl}" alt="before" />` : ''}
+            </div>
+            <div class="muted" data-field="photo-status"></div>
+          </div>
+        `;
+        wrap.appendChild(div);
+        div.querySelector('[data-action="remove"]').addEventListener('click', () => {
+          state.issues.splice(idx, 1); renderIssues();
+        });
+        div.querySelector('select[data-field="category"]').addEventListener('change', (e) => { iss.category = e.target.value; });
+        div.querySelectorAll('.severity-chips button').forEach((b) => {
+          b.addEventListener('click', () => {
+            iss.severity = b.dataset.value;
+            Array.from(div.querySelectorAll('.severity-chips button')).forEach((sib) => sib.classList.remove('on'));
+            b.classList.add('on');
+          });
+        });
+        div.querySelector('input[data-field="location_in_room"]').addEventListener('input', (e) => { iss.location_in_room = e.target.value; });
+        div.querySelector('textarea[data-field="description"]').addEventListener('input', (e) => { iss.description = e.target.value; });
+        div.querySelector('input[data-field="photo"]').addEventListener('change', async (e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          const statusEl = div.querySelector('[data-field="photo-status"]');
+          statusEl.textContent = 'Uploading…';
+          try {
+            const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+            const presign = await fetch(`${window.__API_BASE}/api/public/inspections/${state.pid}/photos/upload-url`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ inspection_id: state.inspectionId, photo_type: 'before', file_extension: ext }),
+            });
+            if (!presign.ok) throw new Error('Could not get upload URL');
+            const presignData = await presign.json();
+            const upload = await fetch(presignData.upload_url, {
+              method: 'PUT', headers: { 'Content-Type': presignData.content_type }, body: file,
+            });
+            if (!upload.ok) throw new Error('Upload failed');
+            iss.before_photo_key = presignData.key;
+            iss.beforePhotoUrl = presignData.view_url;
+            statusEl.textContent = 'Uploaded.';
+            const preview = div.querySelector('.photo-preview');
+            preview.innerHTML = `<img src="${presignData.view_url}" alt="before" />`;
+            preview.classList.remove('hidden');
+          } catch (err) {
+            statusEl.textContent = err.message || 'Upload failed.';
+          }
+        });
+      });
+    }
+
+    document.getElementById('add-issue-btn').addEventListener('click', () => {
+      state.issues.push({ category: 'maintenance', severity: 'standard', location_in_room: '', description: '' });
+      renderIssues();
+    });
+
+    document.getElementById('submit-btn').addEventListener('click', async () => {
+      hideError();
+      if (!state.cleanliness) return showError('Pick an overall cleanliness rating.');
+      const cond = document.getElementById('overall_condition').value;
+      if (!cond) return showError('Pick an overall condition.');
+      const notes = document.getElementById('general_notes').value.trim();
+      for (let i = 0; i < state.issues.length; i++) {
+        const iss = state.issues[i];
+        if (!iss.description || iss.description.trim().length < 5) {
+          return showError(`Issue ${i + 1}: description must be at least 5 characters.`);
+        }
+      }
+      const btn = document.getElementById('submit-btn');
+      btn.disabled = true; btn.textContent = 'Submitting…';
+      try {
+        // Save each issue first
+        for (const iss of state.issues) {
+          await fetch(`${window.__API_BASE}/api/public/inspections/${state.pid}/${state.inspectionId}/issues`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              inspection_id: state.inspectionId,
+              room_number: state.roomNumber,
+              category: iss.category,
+              severity: iss.severity,
+              location_in_room: iss.location_in_room || '',
+              description: iss.description.trim(),
+              before_photo_key: iss.before_photo_key || '',
+            }),
+          });
+        }
+        const res = await fetch(`${window.__API_BASE}/api/public/inspections/${state.pid}/${state.inspectionId}/submit`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            overall_cleanliness: state.cleanliness,
+            overall_condition: cond,
+            quick_checks: state.quickChecks,
+            general_notes: notes,
+          }),
+        });
+        if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Submit failed'); }
+        document.getElementById('step-inspect').classList.add('hidden');
+        document.getElementById('success-message').textContent = `Room ${state.roomNumber} recorded with ${state.issues.length} issue${state.issues.length === 1 ? '' : 's'}.`;
+        document.getElementById('success').classList.remove('hidden');
+        window.scrollTo({ top: 0 });
+      } catch (err) {
+        showError(err.message);
+      } finally {
+        btn.disabled = false; btn.textContent = 'Submit inspection';
+      }
+    });
+
+    document.getElementById('new-btn').addEventListener('click', () => {
+      state.inspectionId = null;
+      state.roomNumber = null;
+      state.cleanliness = 0;
+      state.quickChecks = {};
+      state.issues = [];
+      document.getElementById('success').classList.add('hidden');
+      document.getElementById('step-start').classList.remove('hidden');
+      document.getElementById('overall_condition').value = '';
+      document.getElementById('general_notes').value = '';
+      Array.from(document.querySelectorAll('#room-grid button')).forEach((b) => b.classList.remove('on'));
+      document.getElementById('start-btn').disabled = true;
+      window.scrollTo({ top: 0 });
+    });
+
+    loadStartData();
+  </script>
+</body>
+</html>

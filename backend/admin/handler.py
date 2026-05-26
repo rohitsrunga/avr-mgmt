@@ -1,12 +1,22 @@
-"""User management: owner-only operations on the Cognito User Pool."""
+"""User management + per-property feature flags. Owner-only writes.
+
+Cognito user CRUD plus an /api/admin/features section that backs the
+"Property features" toggles in the Admin tab.
+"""
 import os
 import secrets
 
 import boto3
 
 from shared.auth import ALL_ROLES, ROLE_OWNER, authorize, get_identity
-from shared.response import bad_request, not_found, ok, server_error
+from shared.response import bad_request, forbidden, not_found, ok, server_error
 from shared.router import Router, parse_body
+from shared.settings import (
+    TOGGLEABLE_FEATURES,
+    VALID_PROPERTIES,
+    get_all_feature_configs,
+    set_feature_config,
+)
 
 router = Router()
 _cognito = boto3.client("cognito-idp")
@@ -158,6 +168,41 @@ def delete_user(event, params):
     except _cognito.exceptions.UserNotFoundException:
         return not_found("user not found")
     return ok({"deleted": True})
+
+
+# ---------------------------------------------------------------------------
+# Feature flags (per-property, owner-toggleable)
+# ---------------------------------------------------------------------------
+
+@router.get("/api/admin/features")
+def list_features(event, params):
+    """Any authenticated user can read this — the SPA uses it at startup to
+    decide which nav tabs to render."""
+    err = authorize(event, ALL_ROLES)
+    if err:
+        return err
+    return ok({
+        "properties": list(VALID_PROPERTIES),
+        "features": list(TOGGLEABLE_FEATURES),
+        "config": get_all_feature_configs(),
+    })
+
+
+@router.put("/api/admin/features/{property_id}")
+def update_features(event, params):
+    """Owner-only. Body: {enabled: ["dinner","groups",...]}."""
+    err = authorize(event, [ROLE_OWNER])
+    if err:
+        return err
+    pid = params["property_id"]
+    if pid not in VALID_PROPERTIES:
+        return bad_request(f"unknown property: {pid}")
+    body = parse_body(event)
+    enabled = body.get("enabled")
+    if not isinstance(enabled, list):
+        return bad_request("body must include an `enabled` list of feature ids")
+    cleaned = set_feature_config(pid, enabled)
+    return ok({"property_id": pid, "enabled": cleaned})
 
 
 def _generate_temp_password():

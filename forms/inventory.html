@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f5f5f7" />
+  <title>Stock Check · Casco Bay Hotel</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="brand">
+      <div class="mark">A</div>
+      <div class="meta">
+        <div class="name">Casco Bay Hotel</div>
+        <div class="sub">AVR Hospitality · Stock Check</div>
+      </div>
+    </header>
+
+    <h1 class="page-title">Stock check</h1>
+    <p class="page-subtitle">Walk the property and enter what's on hand. Pick a category, count, save.</p>
+
+    <div id="banner-error" class="banner error hidden"></div>
+    <div id="banner-success" class="banner success hidden"></div>
+
+    <div id="loading" class="card">
+      <p class="muted">Loading items…</p>
+    </div>
+
+    <div id="who-card" class="card hidden">
+      <div class="field" style="margin-bottom: 0">
+        <label for="who">Your name</label>
+        <input id="who" name="who" type="text" maxlength="80" placeholder="So we know who counted" autocomplete="name" />
+      </div>
+    </div>
+
+    <div id="category-card" class="card hidden">
+      <div class="section-title">Category</div>
+      <div class="options" id="categories"></div>
+    </div>
+
+    <div id="items-card" class="card hidden">
+      <div class="section-title" id="items-title">Items</div>
+      <p class="muted" id="items-subtitle"></p>
+      <div id="items-list" class="room-list"></div>
+      <button id="save-btn" class="btn primary block" style="margin-top: 16px;" disabled>Save 0 changes</button>
+    </div>
+
+    <div id="success" class="card success-state hidden">
+      <div class="check"></div>
+      <h2>Saved</h2>
+      <p id="success-message">Stock counts recorded.</p>
+      <button type="button" class="btn secondary" id="continue-btn">Continue another category</button>
+    </div>
+
+    <footer class="foot">AVR Hospitality Management</footer>
+  </div>
+
+  <script>
+    window.__API_BASE = window.__API_BASE || '__API_BASE__';
+
+    let allItems = [];
+    let category = null;
+    const overrides = {};   // key item_id → new qty
+
+    const CATEGORY_LABELS = {
+      breakfast_food: 'Breakfast Food',
+      breakfast_beverage: 'Breakfast Beverage',
+      breakfast_supply: 'Breakfast Supplies',
+      housekeeping: 'Housekeeping',
+      linen: 'Linen',
+      amenity: 'Amenities',
+      front_desk: 'Front Desk',
+    };
+
+    function getProperty() {
+      const url = new URL(window.location.href);
+      return url.searchParams.get('p') || 'casco_bay';
+    }
+
+    function showError(msg) {
+      const b = document.getElementById('banner-error');
+      b.textContent = msg;
+      b.classList.remove('hidden');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    function hideError() { document.getElementById('banner-error').classList.add('hidden'); }
+    function showSuccess(msg) {
+      const b = document.getElementById('banner-success');
+      b.textContent = msg;
+      b.classList.remove('hidden');
+      setTimeout(() => b.classList.add('hidden'), 2400);
+    }
+
+    function rememberName() {
+      const stored = localStorage.getItem('avr.stockcheck.' + getProperty());
+      if (stored) document.getElementById('who').value = stored;
+      document.getElementById('who').addEventListener('change', (e) => {
+        localStorage.setItem('avr.stockcheck.' + getProperty(), e.target.value.trim());
+      });
+    }
+
+    async function loadItems() {
+      try {
+        const res = await fetch(`${window.__API_BASE}/api/public/inventory/${getProperty()}/items`);
+        if (!res.ok) throw new Error('Could not load items');
+        const data = await res.json();
+        allItems = data.items || [];
+        renderCategories();
+        document.getElementById('loading').classList.add('hidden');
+        document.getElementById('who-card').classList.remove('hidden');
+        document.getElementById('category-card').classList.remove('hidden');
+        rememberName();
+      } catch (err) {
+        document.getElementById('loading').classList.add('hidden');
+        showError(err.message || 'Could not load items.');
+      }
+    }
+
+    function renderCategories() {
+      const cats = Array.from(new Set(allItems.map((i) => i.category)));
+      const el = document.getElementById('categories');
+      el.innerHTML = cats.map((c) => `
+        <button type="button" class="option" data-category="${c}">
+          <span class="indicator"></span>
+          <span>${CATEGORY_LABELS[c] || c}</span>
+        </button>
+      `).join('');
+      el.querySelectorAll('button').forEach((btn) => {
+        btn.addEventListener('click', () => selectCategory(btn.dataset.category));
+      });
+    }
+
+    function selectCategory(c) {
+      category = c;
+      document.getElementById('items-title').textContent = CATEGORY_LABELS[c] || c;
+      const items = allItems.filter((i) => i.category === c);
+      document.getElementById('items-subtitle').textContent =
+        `${items.length} item${items.length === 1 ? '' : 's'} · enter the current count and save.`;
+      const list = document.getElementById('items-list');
+      list.innerHTML = items.map((it) => {
+        const status = it.status || 'ok';
+        const statusColor = status === 'critical' ? 'var(--danger)' : status === 'low' ? 'var(--warning)' : 'var(--ink-muted)';
+        return `
+          <div class="room" data-id="${it.item_id}" data-category="${it.category}">
+            <div style="flex: 1; min-width: 0;">
+              <div style="font-weight: 500; font-size: 15px;">${escapeHtml(it.item_name)}</div>
+              <div class="notes">par ${it.par_level} ${escapeHtml(it.unit || '')} · <span style="color:${statusColor}">${status}</span></div>
+            </div>
+            <input
+              type="number"
+              min="0"
+              inputmode="numeric"
+              value="${it.current_stock}"
+              data-original="${it.current_stock}"
+              data-id="${it.item_id}"
+              data-category="${it.category}"
+              style="width: 80px; padding: 8px 10px; font-size: 16px; text-align: right; border: 1px solid var(--line); border-radius: 10px; font-family: inherit;"
+            />
+          </div>
+        `;
+      }).join('');
+      list.querySelectorAll('input[type=number]').forEach((inp) => {
+        inp.addEventListener('input', () => {
+          const id = inp.dataset.id;
+          const original = Number(inp.dataset.original);
+          const v = Number(inp.value);
+          if (Number.isFinite(v) && v !== original) {
+            overrides[id] = { item_id: id, category: inp.dataset.category, current_quantity: Math.max(0, v) };
+          } else {
+            delete overrides[id];
+          }
+          updateSaveButton();
+        });
+      });
+      document.getElementById('items-card').classList.remove('hidden');
+      window.scrollTo({ top: document.getElementById('items-card').offsetTop - 16, behavior: 'smooth' });
+      updateSaveButton();
+    }
+
+    function updateSaveButton() {
+      const btn = document.getElementById('save-btn');
+      const n = Object.keys(overrides).length;
+      btn.disabled = n === 0;
+      btn.textContent = `Save ${n} change${n === 1 ? '' : 's'}`;
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    document.getElementById('save-btn').addEventListener('click', async () => {
+      hideError();
+      const who = document.getElementById('who').value.trim();
+      if (!who) {
+        showError('Please enter your name.');
+        return;
+      }
+      const updates = Object.values(overrides);
+      if (updates.length === 0) return;
+      const btn = document.getElementById('save-btn');
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+      try {
+        const res = await fetch(`${window.__API_BASE}/api/public/inventory/${getProperty()}/bulk-update`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ updated_by: who, updates }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        document.getElementById('items-card').classList.add('hidden');
+        document.getElementById('success-message').textContent =
+          `${data.updated_count} item${data.updated_count === 1 ? '' : 's'} updated. Reload data when you're ready for the next category.`;
+        document.getElementById('success').classList.remove('hidden');
+        // reset state — caller can start fresh on continue
+        Object.keys(overrides).forEach((k) => delete overrides[k]);
+      } catch (err) {
+        showError(err.message || 'Could not save. Try again.');
+        btn.disabled = false;
+        updateSaveButton();
+      }
+    });
+
+    document.getElementById('continue-btn').addEventListener('click', async () => {
+      document.getElementById('success').classList.add('hidden');
+      await loadItems();
+    });
+
+    loadItems();
+  </script>
+</body>
+</html>

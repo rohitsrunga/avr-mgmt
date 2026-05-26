@@ -1,28 +1,22 @@
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
 import { useProperty } from '../hooks/useProperty'
-import { DINNER_ENABLED_PROPERTIES, ROLES } from '../config'
+import { ROLES } from '../config'
 
 const ALL_TABS = [
-  { id: 'overview',     to: '/app',              label: 'Overview' },
-  { id: 'shifts',       to: '/app/shifts',       label: 'Shift Checklist' },
-  { id: 'inventory',    to: '/app/inventory',    label: 'Inventory' },
-  { id: 'rooms',        to: '/app/rooms',        label: 'Rooms' },
-  { id: 'housekeeping', to: '/app/housekeeping', label: 'Housekeeping' },
-  { id: 'dinner',       to: '/app/dinner',       label: 'Dinner Orders' },
-  { id: 'admin',        to: '/app/admin',        label: 'Admin' },
+  { id: 'checklists', to: '/app/checklists', label: 'Checklists' },
+  { id: 'property',   to: '/app/property',   label: 'Housekeeping & Inspections' },
+  { id: 'marketing',  to: '/app/marketing',  label: 'Marketing' },
+  { id: 'inventory',  to: '/app/inventory',  label: 'Inventory' },
+  { id: 'admin',      to: '/app/admin',      label: 'Admin' },
 ]
 
 export default function NavTabs() {
   const { user } = useAuth()
-  const { propertyId } = useProperty()
+  useProperty()
   const roleConfig = ROLES.find((r) => r.id === user?.role)
   const allowedIds = new Set(roleConfig?.tabs || [])
-  const tabs = ALL_TABS.filter((t) => {
-    if (!allowedIds.has(t.id)) return false
-    if (t.id === 'dinner' && !DINNER_ENABLED_PROPERTIES.has(propertyId)) return false
-    return true
-  })
+  const tabs = ALL_TABS.filter((t) => allowedIds.has(t.id))
 
   return (
     <nav className="bg-white border-b border-line-subtle sticky top-[57px] z-20">
@@ -32,7 +26,6 @@ export default function NavTabs() {
             <NavLink
               key={tab.id}
               to={tab.to}
-              end={tab.to === '/app'}
               className={({ isActive }) =>
                 `px-3 sm:px-4 py-3.5 text-[14px] font-medium whitespace-nowrap border-b-2 transition-colors -mb-px ${
                   isActive

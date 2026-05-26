@@ -117,6 +117,26 @@
   .table-clean tbody tr:hover {
     @apply bg-surface-subtle;
   }
+  .seg {
+    @apply inline-flex p-[3px] bg-surface-muted rounded-[9px] border border-line-subtle;
+  }
+  .seg-btn {
+    @apply px-2.5 py-1 text-[12px] font-semibold text-ink-muted rounded-md cursor-pointer transition-colors;
+  }
+  .seg-btn.active {
+    @apply bg-white text-ink shadow-card;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold text-ink-body bg-white border border-line-subtle whitespace-nowrap cursor-pointer transition-colors;
+  }
+  .chip:hover { @apply bg-surface-muted; }
+  .chip.active {
+    @apply bg-ink text-white border-ink;
+  }
+  .chip.active:hover { @apply bg-ink; }
+  .pill {
+    @apply inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium;
+  }
 }
 
 .fade-in {
