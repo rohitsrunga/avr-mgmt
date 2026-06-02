@@ -32,6 +32,8 @@ export default function Checklists() {
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input max-w-[180px]" />
       </div>
 
+      <OccupancyBANs propertyId={propertyId} />
+
       <ShiftRow propertyId={propertyId} date={date} onOpenShift={setOpenShift} />
 
       <div className="grid lg:grid-cols-3 gap-5">
@@ -54,6 +56,58 @@ export default function Checklists() {
       )}
     </div>
   )
+}
+
+function OccupancyBANs({ propertyId }) {
+  const api = useApi()
+  const [data, setData] = useState(null)
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoaded(false)
+    api.get(`/api/reports/${propertyId}/today`)
+      .then((res) => { if (!cancelled) { setData(res); setLoaded(true) } })
+      .catch(() => { if (!cancelled) { setData(null); setLoaded(true) } })
+    return () => { cancelled = true }
+  }, [propertyId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const stale = data?.synced_at && (Date.now() - new Date(data.synced_at).getTime() > 12 * 3600 * 1000)
+  const noData = loaded && (!data || !data.synced_at)
+  const hint = noData
+    ? 'Cloudbeds not connected'
+    : stale
+      ? `synced ${timeAgo(data.synced_at)}`
+      : data?.synced_at ? `synced ${timeAgo(data.synced_at)}` : ''
+
+  return (
+    <div className="grid grid-cols-3 gap-3 sm:gap-4">
+      <BAN label="Arrivals"   value={noData ? '—' : data?.arrivals}   hint={hint} />
+      <BAN label="In house"   value={noData ? '—' : data?.in_house}   hint={hint} />
+      <BAN label="Departures" value={noData ? '—' : data?.departures} hint={hint} />
+    </div>
+  )
+}
+
+function BAN({ label, value, hint }) {
+  return (
+    <div className="card">
+      <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-muted">{label}</div>
+      <div className="text-[32px] font-semibold tracking-tight tabular-nums mt-1 text-ink">{value ?? '—'}</div>
+      {hint && <div className="text-[11px] text-ink-muted mt-0.5 truncate">{hint}</div>}
+    </div>
+  )
+}
+
+function timeAgo(iso) {
+  if (!iso) return ''
+  const diffMs = Date.now() - new Date(iso).getTime()
+  const mins = Math.round(diffMs / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.round(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  return `${Math.round(hrs / 24)}d ago`
 }
 
 function ShiftRow({ propertyId, date, onOpenShift }) {

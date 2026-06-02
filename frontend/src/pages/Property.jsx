@@ -36,6 +36,7 @@ export default function Property() {
   const [openIssues, setOpenIssues] = useState({ issues: [], urgent: 0, standard: 0, minor: 0, note: 0, total: 0 })
   const [log, setLog] = useState({ inspections: [], total: 0 })
   const [selectedRoom, setSelectedRoom] = useState(null)
+  const [cloudbeds, setCloudbeds] = useState({ rooms: [], dirty: [], departures: [], synced_at: '' })
   const [error, setError] = useState('')
 
   async function loadAll() {
@@ -46,6 +47,7 @@ export default function Property() {
         api.get(`/api/housekeeping/${propertyId}/roster`).catch(() => ({ roster: [] })),
         api.get(`/api/housekeeping/${propertyId}/assignments`, { date }).catch(() => ({ assignments: [] })),
         api.get(`/api/housekeeping/${propertyId}/progress`, { date }).catch(() => null),
+        api.get(`/api/reports/${propertyId}/rooms-to-clean`).catch(() => ({ rooms: [], dirty: [], departures: [], synced_at: '' })),
       ]
       if (inspEnabled) {
         tasks.push(
@@ -54,11 +56,12 @@ export default function Property() {
           api.get(`/api/inspections/${propertyId}/log`, { limit: 12 }).catch(() => ({ inspections: [], total: 0 })),
         )
       }
-      const [r, rost, a, prog, ir, oi, lg] = await Promise.all(tasks)
+      const [r, rost, a, prog, cb, ir, oi, lg] = await Promise.all(tasks)
       setRooms(r.rooms || [])
       setRoster(rost.roster || [])
       setAssignments(a.assignments || [])
       setProgress(prog)
+      setCloudbeds(cb || { rooms: [], dirty: [], departures: [], synced_at: '' })
       setInspRooms(ir?.rooms || {})
       setOpenIssues(oi || { issues: [], total: 0 })
       setLog(lg || { inspections: [], total: 0 })
@@ -122,6 +125,7 @@ export default function Property() {
           assignments={assignments}
           progress={progress}
           allRoomNumbers={allRoomNumbers}
+          cloudbeds={cloudbeds}
           onChanged={loadAll}
           onSelectRoom={setSelectedRoom}
         />
@@ -163,7 +167,7 @@ export default function Property() {
 /* CLEANING                                                               */
 /* ---------------------------------------------------------------------- */
 
-function CleaningView({ propertyId, date, roster, assignments, progress, allRoomNumbers, onChanged, onSelectRoom }) {
+function CleaningView({ propertyId, date, roster, assignments, progress, allRoomNumbers, cloudbeds, onChanged, onSelectRoom }) {
   const api = useApi()
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -181,10 +185,19 @@ function CleaningView({ propertyId, date, roster, assignments, progress, allRoom
   }, [roster, assignments])
 
   const assignedRoomSet = useMemo(() => new Set(assignments.map((a) => String(a.room_number))), [assignments])
-  const unassignedRooms = useMemo(
-    () => allRoomNumbers.filter((rn) => !assignedRoomSet.has(String(rn))),
-    [allRoomNumbers, assignedRoomSet],
-  )
+
+  // "Rooms that need to be assigned" = Cloudbeds' union of today's departures
+  // + Cloudbeds-flagged dirty/pickup, minus rooms already assigned. Falls
+  // back to (all property rooms minus assigned) when Cloudbeds isn't wired
+  // up yet for this property.
+  const cbRooms = useMemo(() => cloudbeds?.rooms || [], [cloudbeds])
+  const cbConnected = !!(cloudbeds && cloudbeds.synced_at)
+  const cbDepartures = useMemo(() => new Set((cloudbeds?.departures || []).map(String)), [cloudbeds])
+  const cbDirty = useMemo(() => new Set((cloudbeds?.dirty || []).map(String)), [cloudbeds])
+  const unassignedRooms = useMemo(() => {
+    const source = cbConnected ? cbRooms : allRoomNumbers
+    return source.map(String).filter((rn) => !assignedRoomSet.has(rn)).sort((a, b) => Number(a) - Number(b))
+  }, [cbConnected, cbRooms, allRoomNumbers, assignedRoomSet])
 
   const paceById = useMemo(() => {
     const m = {}
@@ -285,24 +298,37 @@ function CleaningView({ propertyId, date, roster, assignments, progress, allRoom
       </SectionCard>
 
       <SectionCard
-        title="Unassigned rooms"
+        title="Rooms to assign"
         actions={<span className="pill bg-surface-muted text-ink-body border border-line-subtle">{unassignedRooms.length}</span>}
-        subtitle="Rooms in the property with no housekeeping assignment for this date."
+        subtitle={
+          cbConnected
+            ? `From Cloudbeds · departures + dirty/pickup minus already assigned · synced ${timeAgo(cloudbeds.synced_at)}`
+            : 'Cloudbeds not connected — falling back to every room in the property minus assigned'
+        }
       >
         {unassignedRooms.length === 0 ? (
-          <div className="text-[13px] text-ink-muted py-6 text-center">Every room is assigned. Nice.</div>
+          <div className="text-[13px] text-ink-muted py-6 text-center">
+            {cbConnected ? 'Cloudbeds shows nothing needing cleaning today.' : 'Every room is assigned. Nice.'}
+          </div>
         ) : (
           <div className="flex flex-wrap gap-1.5">
-            {unassignedRooms.map((rn) => (
+            {unassignedRooms.map((rn) => {
+              const isDep = cbDepartures.has(rn)
+              const isDirty = cbDirty.has(rn)
+              const tag = isDep && isDirty ? 'D+✕' : isDep ? 'D' : isDirty ? '✕' : null
+              const title = `Room ${rn}${isDep ? ' · departing today' : ''}${isDirty ? ' · Cloudbeds: dirty' : ''}`
+              return (
               <button
                 key={rn}
                 onClick={() => onSelectRoom(rn)}
                 className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-line bg-white text-[12px] tabular-nums text-ink-body hover:border-ink-muted"
-                title={`Room ${rn} · unassigned`}
+                title={title}
               >
                 {rn}
+                {tag && <span className="text-[9px] font-semibold text-ink-muted">{tag}</span>}
               </button>
-            ))}
+              )
+            })}
           </div>
         )}
       </SectionCard>
@@ -629,6 +655,17 @@ function FeatureOff({ label }) {
 /* ---------------------------------------------------------------------- */
 /* SHARED                                                                 */
 /* ---------------------------------------------------------------------- */
+
+function timeAgo(iso) {
+  if (!iso) return ''
+  const diffMs = Date.now() - new Date(iso).getTime()
+  const mins = Math.round(diffMs / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.round(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  return `${Math.round(hrs / 24)}d ago`
+}
 
 function floorOf(roomNumber) {
   const n = String(roomNumber)
