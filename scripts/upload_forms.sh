@@ -30,7 +30,7 @@ trap 'rm -rf "$TMP"' EXIT
 
 cp forms/styles.css "$TMP/styles.css"
 # Substitute the API base into each HTML file.
-PAGES=(dinner.html housekeeping.html onboarding.html handbook.html groups.html inventory.html inspection.html)
+PAGES=(dinner.html housekeeping.html onboarding.html handbook.html groups.html inventory.html inspection.html cloudbeds_callback.html)
 for page in "${PAGES[@]}"; do
   sed "s|__API_BASE__|$API_URL|g" "forms/$page" > "$TMP/$page"
 done

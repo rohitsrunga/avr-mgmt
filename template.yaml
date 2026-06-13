@@ -728,6 +728,7 @@ Resources:
 
   # ----------------------------------------------------------------
   # Cloudbeds sync (Saco Bay) — pulls dashboard data into the cache.
+  # Authenticates with a property-level cbat_ API key as Bearer.
   # EventBridge schedule starts disabled; enable after running the
   # cloudbeds_oauth_setup.py script to populate the secret.
   # ----------------------------------------------------------------
@@ -756,14 +757,14 @@ Resources:
             Enabled: false
 
   # ================================================================
-  # Secrets Manager (Cloudbeds OAuth — Saco Bay only for now)
+  # Secrets Manager (Cloudbeds API key — Saco Bay only for now)
   # ================================================================
   SacoBayCloudbedsSecret:
     Type: AWS::SecretsManager::Secret
     Properties:
       Name: !Sub '${StackPrefix}/cloudbeds/saco_bay'
-      Description: Cloudbeds OAuth credentials for Saco Bay
-      SecretString: '{"client_id":"PLACEHOLDER","client_secret":"PLACEHOLDER","refresh_token":"PLACEHOLDER","api_key":"PLACEHOLDER"}'
+      Description: Cloudbeds property-level API key for Saco Bay
+      SecretString: '{"api_key":"PLACEHOLDER","client_id":"PLACEHOLDER","client_secret":"PLACEHOLDER"}'
 
   # ================================================================
   # Public Forms S3 bucket — static HTML for unauthenticated forms.

@@ -60,11 +60,7 @@ export default function Marketing() {
 
       <div className={selected ? 'grid lg:grid-cols-3 gap-5' : ''}>
         <div className={selected ? 'lg:col-span-2 space-y-4' : 'space-y-4'}>
-          {!groupsOn ? (
-            <SectionCard title="Group contracts">
-              <Banner tone="info">Group Contracts are disabled for this property.</Banner>
-            </SectionCard>
-          ) : (
+          {groupsOn && (
             <SectionCard
               title={`All contracts · ${contracts.length}`}
               actions={

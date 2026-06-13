@@ -26,7 +26,14 @@ export default function Property() {
   const { propertyId, property } = useProperty()
   const { isEnabled } = useFeatureConfig()
   const inspEnabled = isEnabled('inspections', propertyId)
+  const lenses = inspEnabled ? LENSES : LENSES.filter((l) => l.id !== 'condition')
   const [lens, setLens] = useState('cleaning')
+
+  // Snap back to the cleaning lens if inspections gets toggled off while
+  // the user is on the Condition lens.
+  useEffect(() => {
+    if (!inspEnabled && lens === 'condition') setLens('cleaning')
+  }, [inspEnabled, lens])
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [rooms, setRooms] = useState([])
   const [roster, setRoster] = useState([])
@@ -105,17 +112,19 @@ export default function Property() {
 
       {error && <Banner tone="error">{error}</Banner>}
 
-      <div className="seg">
-        {LENSES.map((l) => (
-          <button
-            key={l.id}
-            onClick={() => setLens(l.id)}
-            className={`seg-btn ${lens === l.id ? 'active' : ''}`}
-          >
-            {l.label}
-          </button>
-        ))}
-      </div>
+      {lenses.length > 1 && (
+        <div className="seg">
+          {lenses.map((l) => (
+            <button
+              key={l.id}
+              onClick={() => setLens(l.id)}
+              className={`seg-btn ${lens === l.id ? 'active' : ''}`}
+            >
+              {l.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {lens === 'cleaning' && (
         <CleaningView
@@ -131,20 +140,16 @@ export default function Property() {
         />
       )}
 
-      {lens === 'condition' && (
-        inspEnabled ? (
-          <ConditionView
-            propertyId={propertyId}
-            allRoomNumbers={allRoomNumbers}
-            inspRooms={inspRooms}
-            openIssues={openIssues}
-            log={log}
-            onSelectRoom={setSelectedRoom}
-            onResolved={loadAll}
-          />
-        ) : (
-          <FeatureOff label="Inspections" />
-        )
+      {lens === 'condition' && inspEnabled && (
+        <ConditionView
+          propertyId={propertyId}
+          allRoomNumbers={allRoomNumbers}
+          inspRooms={inspRooms}
+          openIssues={openIssues}
+          log={log}
+          onSelectRoom={setSelectedRoom}
+          onResolved={loadAll}
+        />
       )}
 
       {selectedRoom && (
@@ -641,15 +646,6 @@ function InspectionLog({ log }) {
 
 function conditionBadge(c) {
   return ({ excellent: 'badge-positive', good: 'badge-brand', fair: 'badge-warning', poor: 'badge-danger' })[c] || 'badge-neutral'
-}
-
-function FeatureOff({ label }) {
-  return (
-    <div className="card text-[13px] text-ink-muted">
-      <strong className="block text-ink mb-1">{label} disabled</strong>
-      Switch it on from the Admin tab to use this lens.
-    </div>
-  )
 }
 
 /* ---------------------------------------------------------------------- */

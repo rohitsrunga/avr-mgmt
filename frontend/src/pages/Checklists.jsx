@@ -18,7 +18,9 @@ const MGMT = new Set(['owner', 'manager'])
 export default function Checklists() {
   const { user } = useAuth()
   const { propertyId, property } = useProperty()
+  const { isEnabled } = useFeatureConfig()
   const isMgmt = MGMT.has(user?.role)
+  const dinnerOn = isEnabled('dinner', propertyId)
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [openShift, setOpenShift] = useState(null)
 
@@ -27,7 +29,7 @@ export default function Checklists() {
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex-1">
           <h1 className="page-title">Checklists</h1>
-          <p className="page-subtitle">{property?.name} · today's shift, dinner, marketing, P&amp;F and standalone lists. Resets at midnight.</p>
+          <p className="page-subtitle">{property?.name} · today's shift{dinnerOn ? ', dinner' : ''}, marketing, P&amp;F and standalone lists. Resets at midnight.</p>
         </div>
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input max-w-[180px]" />
       </div>
@@ -36,14 +38,18 @@ export default function Checklists() {
 
       <ShiftRow propertyId={propertyId} date={date} onOpenShift={setOpenShift} />
 
-      <div className="grid lg:grid-cols-3 gap-5">
-        <div className="lg:col-span-2 space-y-5">
-          <DinnerOrders propertyId={propertyId} date={date} />
+      {dinnerOn ? (
+        <div className="grid lg:grid-cols-3 gap-5">
+          <div className="lg:col-span-2 space-y-5">
+            <DinnerOrders propertyId={propertyId} date={date} />
+          </div>
+          <div className="space-y-5">
+            <ParkFlyPanel propertyId={propertyId} />
+          </div>
         </div>
-        <div className="space-y-5">
-          <ParkFlyPanel propertyId={propertyId} />
-        </div>
-      </div>
+      ) : (
+        <ParkFlyPanel propertyId={propertyId} />
+      )}
 
       {openShift && (
         <ShiftSheet
@@ -391,13 +397,7 @@ function DinnerOrders({ propertyId, date }) {
   const formUrl = enabled && CONFIG.publicFormsBaseUrl ? `${CONFIG.publicFormsBaseUrl}/dinner.html?p=${propertyId}` : ''
   const open = orders.filter((o) => o.status === 'open').length
 
-  if (!enabled) {
-    return (
-      <SectionCard title="Dinner orders">
-        <Banner tone="info">Dinner orders are disabled for this property. Toggle from Admin.</Banner>
-      </SectionCard>
-    )
-  }
+  if (!enabled) return null
 
   return (
     <SectionCard
