@@ -38,6 +38,59 @@ def dashboard(event, params):
     return ok({"data": data, "synced_at": synced_at, "property_id": pid})
 
 
+@router.get("/api/reports/{property_id}/today")
+def today(event, params):
+    """Counts surfaced as BANs on the Checklists tab.
+    Reads the cached Cloudbeds /getReservations snapshot for `property_id`.
+    Falls back to the most recent cached row if today's hasn't been
+    refreshed yet. Returns zeros + empty synced_at when no row exists
+    (typical for properties without Cloudbeds wired up, e.g. Casco Bay)."""
+    pid = params["property_id"]
+    err = authorize_property(event, pid, ALL_ROLES)
+    if err:
+        return err
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    items = query_pk(TBL(), f"PROPERTY#{pid}", f"REPORT#reservations#DATE#{today_str}")
+    if not items:
+        items = query_pk(TBL(), f"PROPERTY#{pid}", "REPORT#reservations#DATE#")
+        items.sort(key=lambda i: i.get("SK", ""), reverse=True)
+        items = items[:1]
+    data = (items[0].get("data") if items else {}) or {}
+    return ok({
+        "property_id": pid,
+        "arrivals":   int(data.get("arriving_today", 0) or 0),
+        "in_house":   int(data.get("in_house", 0) or 0),
+        "departures": int(data.get("departing_today", 0) or 0),
+        "synced_at":  items[0].get("synced_at", "") if items else "",
+    })
+
+
+@router.get("/api/reports/{property_id}/rooms-to-clean")
+def rooms_to_clean(event, params):
+    """Rooms Cloudbeds says need cleaning today (union of today's departures
+    + Cloudbeds-flagged dirty/pickup). Consumed by the Property tab's
+    Cleaning lens to populate the Unassigned pool. Returns empty list +
+    empty synced_at when Cloudbeds isn't wired up for this property."""
+    pid = params["property_id"]
+    err = authorize_property(event, pid, ALL_ROLES)
+    if err:
+        return err
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    items = query_pk(TBL(), f"PROPERTY#{pid}", f"REPORT#rooms_to_clean#DATE#{today_str}")
+    if not items:
+        items = query_pk(TBL(), f"PROPERTY#{pid}", "REPORT#rooms_to_clean#DATE#")
+        items.sort(key=lambda i: i.get("SK", ""), reverse=True)
+        items = items[:1]
+    data = (items[0].get("data") if items else {}) or {}
+    return ok({
+        "property_id": pid,
+        "rooms":      list(data.get("rooms") or []),
+        "dirty":      list(data.get("dirty") or []),
+        "departures": list(data.get("departures") or []),
+        "synced_at":  items[0].get("synced_at", "") if items else "",
+    })
+
+
 @router.get("/api/reports/sync-status")
 def sync_status(event, params):
     err = authorize(event, ALL_ROLES)

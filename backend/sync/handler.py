@@ -1,7 +1,13 @@
 """Cloudbeds sync (Saco Bay only).
 
 Triggered by EventBridge every 6 hours.
-Refreshes OAuth token, pulls dashboard/reservations/transactions, caches into DynamoDB.
+
+Authenticates with a property-level `cbat_` API key sent as a Bearer
+token — no OAuth refresh dance. The key is permanent as long as it's
+used at least once every 30 days. Pulls the BAN-tile counts
+(getDashboard) and the rooms-to-clean union (getHousekeepingStatus +
+getReservations) into the CachedReportsTable so the read-only reports
+endpoints serve cached data without round-tripping to Cloudbeds.
 """
 import json
 import os
@@ -9,9 +15,8 @@ import traceback
 from datetime import datetime, timezone
 
 import boto3
-import urllib.request
 import urllib.parse
-import urllib.error
+import urllib.request
 
 from shared.dynamo import table, to_dynamo
 
@@ -20,25 +25,15 @@ TBL = lambda: table("TABLE_REPORTS")
 SECRET_PREFIX = os.environ.get("CLOUDBEDS_SECRET_PREFIX", "avr/cloudbeds")
 
 PROPERTIES_WITH_CLOUDBEDS = ["saco_bay"]
-CLOUDBEDS_BASE = "https://api.cloudbeds.com"
-TOKEN_URL = "https://hotels.cloudbeds.com/api/v1.1/access_token"
+CLOUDBEDS_BASE = "https://api.cloudbeds.com/api/v1.3"
 
 
 def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
-def _http_get(url, headers=None):
-    req = urllib.request.Request(url, headers=headers or {})
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.loads(resp.read().decode())
-
-
-def _http_post_form(url, data, headers=None):
-    body = urllib.parse.urlencode(data).encode()
-    req = urllib.request.Request(url, data=body, headers=headers or {})
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.loads(resp.read().decode())
+def _today():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
 def _get_secret(property_id):
@@ -47,61 +42,99 @@ def _get_secret(property_id):
     return json.loads(resp["SecretString"])
 
 
-def _put_secret(property_id, data):
-    name = f"{SECRET_PREFIX}/{property_id}"
-    _secrets.put_secret_value(SecretId=name, SecretString=json.dumps(data))
-
-
-def _refresh_token(creds):
-    resp = _http_post_form(TOKEN_URL, {
-        "grant_type": "refresh_token",
-        "client_id": creds["client_id"],
-        "client_secret": creds["client_secret"],
-        "refresh_token": creds["refresh_token"],
+def _cb_get(path, api_key, params=None):
+    url = f"{CLOUDBEDS_BASE}{path}"
+    if params:
+        url += "?" + urllib.parse.urlencode(params)
+    # Send the key as both Bearer and x-api-key — the property-level
+    # quickstart accepts Bearer, the v1.3 reference prescribes x-api-key.
+    req = urllib.request.Request(url, headers={
+        "Authorization": f"Bearer {api_key}",
+        "x-api-key":     api_key,
+        "Accept":        "application/json",
     })
-    return resp
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        return json.loads(resp.read().decode())
 
 
-def _cb_get(path, access_token):
-    return _http_get(
-        f"{CLOUDBEDS_BASE}{path}",
-        headers={"Authorization": f"Bearer {access_token}"},
-    )
+def _i(value):
+    """getDashboard returns some counts as strings ('22') and others as ints —
+    coerce defensively."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
-def _cache_daily_stats(property_id, dashboard_response):
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    data = dashboard_response.get("data") or dashboard_response
-    payload = {
-        "occupancy_pct": data.get("occupancy", data.get("occupancy_pct", 0)),
-        "adr": data.get("adr", 0),
-        "revpar": data.get("revpar", 0),
-        "total_revenue": data.get("revenue", data.get("total_revenue", 0)),
-        "rooms_sold": data.get("rooms_sold", 0),
-        "rooms_available": data.get("rooms_available", 0),
-    }
+def _cache_today_counts(property_id, dashboard_response):
+    """getDashboard splits today's counts into *pending* (`arrivals`,
+    `departures`) and *already-completed* (`arrivalsConfirmed`,
+    `departuresConfirmed`). The BAN tile is meant to show *today's total*
+    so we sum the two. `roomsOccupied` is the live in-house room count;
+    `inHouse` is a different (smaller) number whose docs are unclear, so
+    we prefer `roomsOccupied`. Stored under the legacy SK so
+    reports/handler.py:/today reads it without changes."""
+    data = dashboard_response.get("data") or {}
+    arrivals   = _i(data.get("arrivals")) + _i(data.get("arrivalsConfirmed"))
+    departures = _i(data.get("departures")) + _i(data.get("departuresConfirmed"))
+    in_house   = _i(data.get("roomsOccupied")) or _i(data.get("inHouse"))
     TBL().put_item(Item=to_dynamo({
         "PK": f"PROPERTY#{property_id}",
-        "SK": f"REPORT#daily_stats#DATE#{today}",
-        "data": payload,
+        "SK": f"REPORT#reservations#DATE#{_today()}",
+        "data": {
+            "arriving_today":  arrivals,
+            "in_house":        in_house,
+            "departing_today": departures,
+        },
         "synced_at": _now(),
         "source": "cloudbeds",
     }))
 
 
-def _cache_reservations(property_id, reservations_response):
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    data = reservations_response.get("data") or {}
-    payload = {
-        "arriving_today": data.get("arriving_today", 0),
-        "departing_today": data.get("departing_today", 0),
-        "in_house": data.get("in_house", 0),
-        "no_shows": data.get("no_shows", 0),
-    }
+def _extract_dirty_rooms(hk_response):
+    """getHousekeepingStatus row: `roomCondition` is clean|dirty;
+    `vacantPickup` is a separate boolean. Either signals the room needs
+    attention."""
+    rows = hk_response.get("data") or []
+    out = []
+    for r in rows:
+        condition = str(r.get("roomCondition") or "").lower()
+        if condition == "dirty" or r.get("vacantPickup"):
+            name = r.get("roomName") or r.get("roomID") or ""
+            if name:
+                out.append(str(name))
+    return out
+
+
+def _extract_departure_rooms(reservations_response):
+    """We filter getReservations by checkOutFrom/To=today, so every row in
+    the response is checking out today. Pull room identifiers from the
+    `rooms` array (populated when includeAllRooms=true)."""
+    rows = reservations_response.get("data") or []
+    out = []
+    for res in rows:
+        for room in (res.get("rooms") or res.get("assignedRooms") or []):
+            name = (
+                room.get("roomName")
+                or room.get("roomNumber")
+                or room.get("roomID")
+                or ""
+            )
+            if name:
+                out.append(str(name))
+    return out
+
+
+def _cache_rooms_to_clean(property_id, dirty, departures):
+    union = sorted(set(dirty) | set(departures))
     TBL().put_item(Item=to_dynamo({
         "PK": f"PROPERTY#{property_id}",
-        "SK": f"REPORT#reservations#DATE#{today}",
-        "data": payload,
+        "SK": f"REPORT#rooms_to_clean#DATE#{_today()}",
+        "data": {
+            "rooms":      union,
+            "dirty":      sorted(set(dirty)),
+            "departures": sorted(set(departures)),
+        },
         "synced_at": _now(),
         "source": "cloudbeds",
     }))
@@ -122,29 +155,47 @@ def handler(event, context):
     for pid in PROPERTIES_WITH_CLOUDBEDS:
         try:
             creds = _get_secret(pid)
-            if creds.get("client_id", "").startswith("PLACEHOLDER"):
-                results[pid] = "skipped: placeholder credentials"
+            api_key = (creds.get("api_key") or "").strip()
+            if not api_key or api_key.startswith("PLACEHOLDER"):
+                results[pid] = "skipped: no api_key in secret (run scripts/cloudbeds_oauth_setup.py)"
                 continue
-            token_resp = _refresh_token(creds)
-            access_token = token_resp.get("access_token")
-            if not access_token:
-                raise RuntimeError(f"no access_token in refresh response: {token_resp}")
-            new_refresh = token_resp.get("refresh_token")
-            if new_refresh and new_refresh != creds.get("refresh_token"):
-                creds["refresh_token"] = new_refresh
-                _put_secret(pid, creds)
 
             try:
-                dashboard = _cb_get("/api/v1.1/getDashboard", access_token)
-                _cache_daily_stats(pid, dashboard)
+                dash = _cb_get("/getDashboard", api_key)
+                _cache_today_counts(pid, dash)
             except Exception as e:
                 _record_error(pid, f"dashboard: {e}")
 
+            dirty, dirty_ok = [], False
             try:
-                reservations = _cb_get("/api/v1.1/getReservations", access_token)
-                _cache_reservations(pid, reservations)
+                hk = _cb_get("/getHousekeepingStatus", api_key, {
+                    "roomCondition": "dirty",
+                    "pageSize": 5000,
+                })
+                dirty = _extract_dirty_rooms(hk)
+                dirty_ok = True
+            except Exception as e:
+                _record_error(pid, f"housekeeping: {e}")
+
+            departures, dep_ok = [], False
+            try:
+                today = _today()
+                res = _cb_get("/getReservations", api_key, {
+                    "checkOutFrom":    today,
+                    "checkOutTo":      today,
+                    "includeAllRooms": "true",
+                    "pageSize":        100,
+                })
+                departures = _extract_departure_rooms(res)
+                dep_ok = True
             except Exception as e:
                 _record_error(pid, f"reservations: {e}")
+
+            # Only overwrite the cached row if at least one source
+            # succeeded — otherwise the reports endpoint falls back to
+            # yesterday's row, which beats an empty refresh.
+            if dirty_ok or dep_ok:
+                _cache_rooms_to_clean(pid, dirty, departures)
 
             results[pid] = "ok"
         except Exception as e:
