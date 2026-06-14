@@ -272,6 +272,40 @@ def _parse_payouts(resp):
     return out
 
 
+def _parse_payouts_by_day(resp):
+    """#226 → {payout_date: {posted_gross, posted_net, fees, count}}.
+
+    Aggregated by **payout (bank-deposit) date** across every transaction and
+    reservation in the report — independent of the checkout-anchored
+    reconciliation set. This ties out to the actual bank statement: each entry
+    is the money that landed in the bank on that date, regardless of when the
+    underlying stays checked out."""
+    records = resp.get("records") or {}
+    out = {}
+    for payout_date, td_map in records.items():
+        if not payout_date or payout_date == "-" or not isinstance(td_map, dict):
+            continue
+        day = out.setdefault(payout_date, {
+            "date": payout_date, "posted_gross": 0.0,
+            "posted_net": 0.0, "fees": 0.0, "count": 0,
+        })
+        for _txn_date, res_map in td_map.items():
+            if not isinstance(res_map, dict):
+                continue
+            for res_code, metrics in res_map.items():
+                if not res_code or res_code == "-" or not isinstance(metrics, dict):
+                    continue
+
+                def _sum(key):
+                    return float(((metrics.get(key) or {}).get("sum")) or 0)
+
+                day["posted_gross"] += _sum("total_amount")
+                day["posted_net"] += _sum("net_amount")
+                day["fees"] += _sum("fee_amount")
+                day["count"] += 1
+    return out
+
+
 def _round2(x):
     return round(float(x or 0) + 0.0, 2)
 
@@ -397,6 +431,24 @@ def reconciliation(event, params):
 
     stays, exceptions, totals = _reconcile(txns, payouts)
 
+    # Bank posts by day: actual payouts whose PAYOUT (bank-deposit) date falls
+    # in the filtered range, summed across all reservations — independent of the
+    # checkout-anchored reconciliation above, so the summary table ties out to
+    # the bank statement. The payout pull already spans a wide transaction-date
+    # window, which captures every payout depositing within [d_from, d_to].
+    bank_posts = [
+        {
+            "date": d["date"],
+            "count": d["count"],
+            "posted_gross": _round2(d["posted_gross"]),
+            "posted_net": _round2(d["posted_net"]),
+            "fees": _round2(d["fees"]),
+        }
+        for pd, d in _parse_payouts_by_day(payout_resp).items()
+        if d_from <= pd <= d_to
+    ]
+    bank_posts.sort(key=lambda r: r["date"], reverse=True)
+
     return ok({
         "property_id": pid,
         "from": d_from,
@@ -406,6 +458,7 @@ def reconciliation(event, params):
         "totals": totals,
         "stays": stays,
         "exceptions": exceptions,
+        "bank_posts": bank_posts,
         "synced_at": _now(),
     })
 

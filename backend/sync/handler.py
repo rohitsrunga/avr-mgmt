@@ -70,16 +70,16 @@ def _i(value):
 
 
 def _cache_today_counts(property_id, dashboard_response):
-    """getDashboard splits today's counts into *pending* (`arrivals`,
-    `departures`) and *already-completed* (`arrivalsConfirmed`,
-    `departuresConfirmed`). The BAN tile is meant to show *today's total*
-    so we sum the two. `roomsOccupied` is the live in-house room count;
-    `inHouse` is a different (smaller) number whose docs are unclear, so
-    we prefer `roomsOccupied`. Stored under the legacy SK so
-    reports/handler.py:/today reads it without changes."""
+    """getDashboard's `arrivals` / `departures` are already today's *total*
+    counts; `arrivalsConfirmed` / `departuresConfirmed` are subsets of those
+    (the ones already checked in/out), so we must NOT add them — doing so
+    double-counts every confirmed arrival/departure. `roomsOccupied` is the
+    live in-house room count; `inHouse` is a different (smaller) number whose
+    docs are unclear, so we prefer `roomsOccupied`. Stored under the legacy SK
+    so reports/handler.py:/today reads it without changes."""
     data = dashboard_response.get("data") or {}
-    arrivals   = _i(data.get("arrivals")) + _i(data.get("arrivalsConfirmed"))
-    departures = _i(data.get("departures")) + _i(data.get("departuresConfirmed"))
+    arrivals   = _i(data.get("arrivals"))
+    departures = _i(data.get("departures"))
     in_house   = _i(data.get("roomsOccupied")) or _i(data.get("inHouse"))
     TBL().put_item(Item=to_dynamo({
         "PK": f"PROPERTY#{property_id}",

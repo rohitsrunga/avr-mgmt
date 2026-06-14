@@ -68,6 +68,12 @@ export default function FinanceReconciliation({ propertyId }) {
   const exceptions = data?.exceptions || []
   const collectedPct = t.charged ? Math.round((t.received / t.charged) * 100) : 0
 
+  // Total bank posts (net deposited) by payout date, keyed on the actual
+  // bank-deposit date within the filtered range — so it ties out to the bank
+  // statement rather than the checkout-anchored reconciliation set. Computed
+  // server-side and already sorted newest-first.
+  const postsByDay = data?.bank_posts || []
+
   return (
     <SectionCard
       title="Reconciliation"
@@ -113,6 +119,49 @@ export default function FinanceReconciliation({ propertyId }) {
           {(t.fees > 0 || t.posted_gross > 0) && (
             <div className="text-[12px] text-ink-muted -mt-2">
               Payout gross {usdc(t.posted_gross)} · processor fees {usdc(t.fees)} · net deposited {usdc(t.posted_net)}
+            </div>
+          )}
+
+          {/* Total bank posts by day */}
+          {postsByDay.length > 0 && (
+            <div>
+              <h3 className="section-title mb-2">
+                Bank posts by day
+                <span className="text-ink-muted font-normal"> · net deposited per payout date</span>
+              </h3>
+              <div className="overflow-auto max-h-64 rounded-lg border border-line-subtle">
+                <table className="table-clean text-[13px]">
+                  <thead className="sticky top-0 bg-white z-10">
+                    <tr>
+                      <th className="w-28">Date</th>
+                      <th className="w-20 text-right">Payouts</th>
+                      <th className="w-28 text-right">Gross</th>
+                      <th className="w-24 text-right">Fees</th>
+                      <th className="w-28 text-right">Net to bank</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {postsByDay.map((d) => (
+                      <tr key={d.date}>
+                        <td className="tabular-nums">{shortDate(d.date)}</td>
+                        <td className="tabular-nums text-right">{d.count}</td>
+                        <td className="tabular-nums text-right">{usdc(d.posted_gross)}</td>
+                        <td className="tabular-nums text-right text-ink-muted">{d.fees > 0 ? `−${usdc(d.fees)}` : usdc(0)}</td>
+                        <td className="tabular-nums text-right font-medium">{usdc(d.posted_net)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="sticky bottom-0 bg-white z-10">
+                    <tr className="font-medium border-t border-line">
+                      <td>Total</td>
+                      <td className="tabular-nums text-right">{postsByDay.reduce((a, d) => a + d.count, 0)}</td>
+                      <td className="tabular-nums text-right">{usdc(postsByDay.reduce((a, d) => a + d.posted_gross, 0))}</td>
+                      <td className="tabular-nums text-right text-ink-muted">{usdc(postsByDay.reduce((a, d) => a + d.fees, 0))}</td>
+                      <td className="tabular-nums text-right">{usdc(postsByDay.reduce((a, d) => a + d.posted_net, 0))}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
             </div>
           )}
 
