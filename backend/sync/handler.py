@@ -18,7 +18,10 @@ import boto3
 import urllib.parse
 import urllib.request
 
+from shared.auth import ALL_ROLES, authorize
 from shared.dynamo import table, to_dynamo
+from shared.response import ok, server_error
+from shared.router import Router
 
 _secrets = boto3.client("secretsmanager")
 TBL = lambda: table("TABLE_REPORTS")
@@ -91,19 +94,34 @@ def _cache_today_counts(property_id, dashboard_response):
     }))
 
 
-def _extract_dirty_rooms(hk_response):
+def _bucket_housekeeping_rooms(hk_response):
     """getHousekeepingStatus row: `roomCondition` is clean|dirty;
-    `vacantPickup` is a separate boolean. Either signals the room needs
-    attention."""
+    `vacantPickup` and `roomOccupied` are separate booleans.
+
+    Returns (dirty, inhouse, clean) — disjoint lists of room names:
+      * dirty   — roomCondition=dirty OR vacantPickup=true (needs cleaning)
+      * inhouse — roomOccupied=true AND not dirty (clean stayover, no
+                  housekeeping action needed but useful context for the
+                  manager when assigning)
+      * clean   — roomOccupied=false AND not dirty (vacant and ready —
+                  surfaces in the picker so the manager can see the full
+                  property at a glance)
+    """
     rows = hk_response.get("data") or []
-    out = []
+    dirty, inhouse, clean = [], [], []
     for r in rows:
+        name = r.get("roomName") or r.get("roomID") or ""
+        if not name:
+            continue
+        name = str(name)
         condition = str(r.get("roomCondition") or "").lower()
         if condition == "dirty" or r.get("vacantPickup"):
-            name = r.get("roomName") or r.get("roomID") or ""
-            if name:
-                out.append(str(name))
-    return out
+            dirty.append(name)
+        elif r.get("roomOccupied"):
+            inhouse.append(name)
+        else:
+            clean.append(name)
+    return dirty, inhouse, clean
 
 
 def _extract_departure_rooms(reservations_response):
@@ -125,8 +143,15 @@ def _extract_departure_rooms(reservations_response):
     return out
 
 
-def _cache_rooms_to_clean(property_id, dirty, departures):
-    union = sorted(set(dirty) | set(departures))
+def _cache_rooms_to_clean(property_id, dirty, departures, inhouse, clean):
+    """`rooms` is the union surfaced in the picker — the full set of
+    rooms Cloudbeds knows about, so the manager sees every room with its
+    current state colored.
+
+    `dirty`, `inhouse`, `clean` are disjoint by construction; `departures`
+    is orthogonal and overlaps freely. Frontend precedence (most → least
+    urgent): dirty > departures > clean > inhouse."""
+    union = sorted(set(dirty) | set(departures) | set(inhouse) | set(clean))
     TBL().put_item(Item=to_dynamo({
         "PK": f"PROPERTY#{property_id}",
         "SK": f"REPORT#rooms_to_clean#DATE#{_today()}",
@@ -134,6 +159,8 @@ def _cache_rooms_to_clean(property_id, dirty, departures):
             "rooms":      union,
             "dirty":      sorted(set(dirty)),
             "departures": sorted(set(departures)),
+            "inhouse":    sorted(set(inhouse)),
+            "clean":      sorted(set(clean)),
         },
         "synced_at": _now(),
         "source": "cloudbeds",
@@ -150,56 +177,87 @@ def _record_error(property_id, error):
     }))
 
 
-def handler(event, context):
+def _sync_property(pid):
+    """Run one full sync pass for a single property. Returns "ok",
+    "skipped: …", or "error: …". Individual endpoint failures are
+    recorded into the reports table but don't abort the pass — partial
+    data beats no data."""
+    creds = _get_secret(pid)
+    api_key = (creds.get("api_key") or "").strip()
+    if not api_key or api_key.startswith("PLACEHOLDER"):
+        return "skipped: no api_key in secret (run scripts/cloudbeds_oauth_setup.py)"
+
+    try:
+        dash = _cb_get("/getDashboard", api_key)
+        _cache_today_counts(pid, dash)
+    except Exception as e:
+        _record_error(pid, f"dashboard: {e}")
+
+    dirty, inhouse, clean, hk_ok = [], [], [], False
+    try:
+        # No roomCondition filter — we want every row so we can split
+        # into dirty / inhouse / clean buckets.
+        hk = _cb_get("/getHousekeepingStatus", api_key, {"pageSize": 5000})
+        dirty, inhouse, clean = _bucket_housekeeping_rooms(hk)
+        hk_ok = True
+    except Exception as e:
+        _record_error(pid, f"housekeeping: {e}")
+
+    departures, dep_ok = [], False
+    try:
+        today = _today()
+        res = _cb_get("/getReservations", api_key, {
+            "checkOutFrom":    today,
+            "checkOutTo":      today,
+            "includeAllRooms": "true",
+            "pageSize":        100,
+        })
+        departures = _extract_departure_rooms(res)
+        dep_ok = True
+    except Exception as e:
+        _record_error(pid, f"reservations: {e}")
+
+    # Only overwrite the cached row if at least one source succeeded —
+    # otherwise the reports endpoint falls back to yesterday's row,
+    # which beats an empty refresh.
+    if hk_ok or dep_ok:
+        _cache_rooms_to_clean(pid, dirty, departures, inhouse, clean)
+    return "ok"
+
+
+def _run_all():
     results = {}
     for pid in PROPERTIES_WITH_CLOUDBEDS:
         try:
-            creds = _get_secret(pid)
-            api_key = (creds.get("api_key") or "").strip()
-            if not api_key or api_key.startswith("PLACEHOLDER"):
-                results[pid] = "skipped: no api_key in secret (run scripts/cloudbeds_oauth_setup.py)"
-                continue
-
-            try:
-                dash = _cb_get("/getDashboard", api_key)
-                _cache_today_counts(pid, dash)
-            except Exception as e:
-                _record_error(pid, f"dashboard: {e}")
-
-            dirty, dirty_ok = [], False
-            try:
-                hk = _cb_get("/getHousekeepingStatus", api_key, {
-                    "roomCondition": "dirty",
-                    "pageSize": 5000,
-                })
-                dirty = _extract_dirty_rooms(hk)
-                dirty_ok = True
-            except Exception as e:
-                _record_error(pid, f"housekeeping: {e}")
-
-            departures, dep_ok = [], False
-            try:
-                today = _today()
-                res = _cb_get("/getReservations", api_key, {
-                    "checkOutFrom":    today,
-                    "checkOutTo":      today,
-                    "includeAllRooms": "true",
-                    "pageSize":        100,
-                })
-                departures = _extract_departure_rooms(res)
-                dep_ok = True
-            except Exception as e:
-                _record_error(pid, f"reservations: {e}")
-
-            # Only overwrite the cached row if at least one source
-            # succeeded — otherwise the reports endpoint falls back to
-            # yesterday's row, which beats an empty refresh.
-            if dirty_ok or dep_ok:
-                _cache_rooms_to_clean(pid, dirty, departures)
-
-            results[pid] = "ok"
+            results[pid] = _sync_property(pid)
         except Exception as e:
             traceback.print_exc()
             _record_error(pid, str(e))
             results[pid] = f"error: {e}"
-    return {"statusCode": 200, "body": json.dumps(results)}
+    return results
+
+
+router = Router()
+
+
+@router.post("/api/sync/cloudbeds")
+def trigger_sync(event, params):
+    """Manual refresh from the SPA. Owner/manager only. Runs the same
+    pass the EventBridge schedule does and returns the per-property
+    status so the UI can surface failures inline."""
+    err = authorize(event, ALL_ROLES)
+    if err:
+        return err
+    return ok({"results": _run_all()})
+
+
+def handler(event, context):
+    # HTTP invocation from the SPA's manual refresh button.
+    if isinstance(event, dict) and event.get("requestContext", {}).get("http"):
+        try:
+            return router.dispatch(event)
+        except Exception as e:
+            traceback.print_exc()
+            return server_error(str(e))
+    # EventBridge scheduled invocation.
+    return {"statusCode": 200, "body": json.dumps(_run_all())}

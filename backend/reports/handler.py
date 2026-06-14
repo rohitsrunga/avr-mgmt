@@ -87,6 +87,8 @@ def rooms_to_clean(event, params):
         "rooms":      list(data.get("rooms") or []),
         "dirty":      list(data.get("dirty") or []),
         "departures": list(data.get("departures") or []),
+        "inhouse":    list(data.get("inhouse") or []),
+        "clean":      list(data.get("clean") or []),
         "synced_at":  items[0].get("synced_at", "") if items else "",
     })
 

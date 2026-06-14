@@ -755,6 +755,33 @@ Resources:
           Properties:
             Schedule: rate(6 hours)
             Enabled: false
+        TriggerSync:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: POST, Path: '/api/sync/cloudbeds' }
+
+  # ----------------------------------------------------------------
+  # Finance reconciliation (Saco Bay) — live 3-stage money trace
+  # (charged → received → posted) over a date range, sourced from the
+  # Cloudbeds Data Insights stock reports. Read-only, on-demand, no cache.
+  # ----------------------------------------------------------------
+  FinanceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub '${StackPrefix}-finance'
+      CodeUri: backend/
+      Handler: finance.handler.handler
+      Timeout: 60
+      MemorySize: 512
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${StackPrefix}/cloudbeds/*'
+      Events:
+        Get:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: GET, Path: '/api/finance/{proxy+}' }
 
   # ================================================================
   # Secrets Manager (Cloudbeds API key — Saco Bay only for now)

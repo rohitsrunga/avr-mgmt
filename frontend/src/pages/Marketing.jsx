@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import Banner from '../components/Banner'
 import CopyLink from '../components/CopyLink'
+import FinanceReconciliation from '../components/FinanceReconciliation'
 import SectionCard from '../components/SectionCard'
 import {
   CONFIG,
   GROUP_ROOM_TYPES,
   GROUP_STATUSES,
 } from '../config'
+import { useAuth } from '../auth/AuthProvider'
 import { useApi } from '../hooks/useApi'
 import { useFeatureConfig } from '../hooks/useFeatureConfig'
 import { useProperty } from '../hooks/useProperty'
@@ -15,9 +17,11 @@ const STATUS_MAP = Object.fromEntries(GROUP_STATUSES.map((s) => [s.id, s]))
 
 export default function Marketing() {
   const api = useApi()
+  const { user } = useAuth()
   const { propertyId, property } = useProperty()
   const { isEnabled } = useFeatureConfig()
   const groupsOn = isEnabled('groups', propertyId)
+  const canSeeFinance = ['owner', 'manager'].includes(user?.role) && propertyId === 'saco_bay'
 
   const [contracts, setContracts] = useState([])
   const [statusFilter, setStatusFilter] = useState('')
@@ -48,11 +52,13 @@ export default function Marketing() {
     <div className="space-y-6 fade-in">
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex-1">
-          <h1 className="page-title">Marketing</h1>
-          <p className="page-subtitle">{property?.name} · group contracts, pipeline, and outreach pace.</p>
+          <h1 className="page-title">Finance &amp; Marketing</h1>
+          <p className="page-subtitle">{property?.name} · payout reconciliation, group contracts, and outreach pace.</p>
         </div>
         {groupsOn && <button onClick={() => setCreating(true)} className="btn-primary">+ New contract</button>}
       </div>
+
+      {canSeeFinance && <FinanceReconciliation propertyId={propertyId} />}
 
       {inquiryUrl && <CopyLink url={inquiryUrl} label="Public group-inquiry form" />}
 

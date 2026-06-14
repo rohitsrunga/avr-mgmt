@@ -68,6 +68,16 @@ function OccupancyBANs({ propertyId }) {
   const api = useApi()
   const [data, setData] = useState(null)
   const [loaded, setLoaded] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+
+  async function load() {
+    try {
+      const res = await api.get(`/api/reports/${propertyId}/today`)
+      setData(res); setLoaded(true)
+    } catch {
+      setData(null); setLoaded(true)
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -78,6 +88,18 @@ function OccupancyBANs({ propertyId }) {
     return () => { cancelled = true }
   }, [propertyId]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  async function refreshCloudbeds() {
+    setSyncing(true)
+    try {
+      await api.post('/api/sync/cloudbeds', {})
+      await load()
+    } catch {
+      /* leave the existing data on screen */
+    } finally {
+      setSyncing(false)
+    }
+  }
+
   const stale = data?.synced_at && (Date.now() - new Date(data.synced_at).getTime() > 12 * 3600 * 1000)
   const noData = loaded && (!data || !data.synced_at)
   const hint = noData
@@ -87,10 +109,23 @@ function OccupancyBANs({ propertyId }) {
       : data?.synced_at ? `synced ${timeAgo(data.synced_at)}` : ''
 
   return (
-    <div className="grid grid-cols-3 gap-3 sm:gap-4">
-      <BAN label="Arrivals"   value={noData ? '—' : data?.arrivals}   hint={hint} />
-      <BAN label="In house"   value={noData ? '—' : data?.in_house}   hint={hint} />
-      <BAN label="Departures" value={noData ? '—' : data?.departures} hint={hint} />
+    <div className="space-y-2">
+      <div className="grid grid-cols-3 gap-3 sm:gap-4">
+        <BAN label="Arrivals"   value={noData ? '—' : data?.arrivals}   hint={hint} />
+        <BAN label="In house"   value={noData ? '—' : data?.in_house}   hint={hint} />
+        <BAN label="Departures" value={noData ? '—' : data?.departures} hint={hint} />
+      </div>
+      <div className="text-right">
+        <button
+          type="button"
+          onClick={refreshCloudbeds}
+          disabled={syncing}
+          className="text-[12px] font-medium text-brand hover:text-brand-strong disabled:text-ink-muted disabled:cursor-wait"
+          title="Pull the latest Cloudbeds snapshot"
+        >
+          {syncing ? 'Syncing…' : 'Refresh Cloudbeds'}
+        </button>
+      </div>
     </div>
   )
 }

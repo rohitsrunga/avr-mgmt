@@ -43,7 +43,7 @@ export default function Property() {
   const [openIssues, setOpenIssues] = useState({ issues: [], urgent: 0, standard: 0, minor: 0, note: 0, total: 0 })
   const [log, setLog] = useState({ inspections: [], total: 0 })
   const [selectedRoom, setSelectedRoom] = useState(null)
-  const [cloudbeds, setCloudbeds] = useState({ rooms: [], dirty: [], departures: [], synced_at: '' })
+  const [cloudbeds, setCloudbeds] = useState({ rooms: [], dirty: [], departures: [], inhouse: [], clean: [], synced_at: '' })
   const [error, setError] = useState('')
 
   async function loadAll() {
@@ -54,7 +54,7 @@ export default function Property() {
         api.get(`/api/housekeeping/${propertyId}/roster`).catch(() => ({ roster: [] })),
         api.get(`/api/housekeeping/${propertyId}/assignments`, { date }).catch(() => ({ assignments: [] })),
         api.get(`/api/housekeeping/${propertyId}/progress`, { date }).catch(() => null),
-        api.get(`/api/reports/${propertyId}/rooms-to-clean`).catch(() => ({ rooms: [], dirty: [], departures: [], synced_at: '' })),
+        api.get(`/api/reports/${propertyId}/rooms-to-clean`).catch(() => ({ rooms: [], dirty: [], departures: [], inhouse: [], clean: [], synced_at: '' })),
       ]
       if (inspEnabled) {
         tasks.push(
@@ -68,7 +68,7 @@ export default function Property() {
       setRoster(rost.roster || [])
       setAssignments(a.assignments || [])
       setProgress(prog)
-      setCloudbeds(cb || { rooms: [], dirty: [], departures: [], synced_at: '' })
+      setCloudbeds(cb || { rooms: [], dirty: [], departures: [], inhouse: [], clean: [], synced_at: '' })
       setInspRooms(ir?.rooms || {})
       setOpenIssues(oi || { issues: [], total: 0 })
       setLog(lg || { inspections: [], total: 0 })
@@ -176,6 +176,21 @@ function CleaningView({ propertyId, date, roster, assignments, progress, allRoom
   const api = useApi()
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+
+  async function refreshCloudbeds() {
+    setSyncing(true); setError('')
+    try {
+      const res = await api.post('/api/sync/cloudbeds', {})
+      const status = res?.results?.[propertyId]
+      if (status && status !== 'ok') setError(`Cloudbeds sync: ${status}`)
+      await onChanged?.()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   const byHousekeeper = useMemo(() => {
     const m = new Map()
@@ -199,10 +214,32 @@ function CleaningView({ propertyId, date, roster, assignments, progress, allRoom
   const cbConnected = !!(cloudbeds && cloudbeds.synced_at)
   const cbDepartures = useMemo(() => new Set((cloudbeds?.departures || []).map(String)), [cloudbeds])
   const cbDirty = useMemo(() => new Set((cloudbeds?.dirty || []).map(String)), [cloudbeds])
+  const cbInhouse = useMemo(() => new Set((cloudbeds?.inhouse || []).map(String)), [cloudbeds])
+  const cbClean = useMemo(() => new Set((cloudbeds?.clean || []).map(String)), [cloudbeds])
   const unassignedRooms = useMemo(() => {
     const source = cbConnected ? cbRooms : allRoomNumbers
     return source.map(String).filter((rn) => !assignedRoomSet.has(rn)).sort((a, b) => Number(a) - Number(b))
   }, [cbConnected, cbRooms, allRoomNumbers, assignedRoomSet])
+
+  // Click-to-assign UX: pick a housekeeper container on the left, then
+  // click rooms on the right to add them. Null = picker behaves like the
+  // legacy text-input flow's "no target" — clicking a room opens the
+  // detail sheet instead of assigning.
+  const [selectedHkId, setSelectedHkId] = useState(null)
+  // Drop the selection if the selected housekeeper leaves the roster.
+  useEffect(() => {
+    if (selectedHkId && !roster.some((h) => h.housekeeper_id === selectedHkId)) {
+      setSelectedHkId(null)
+    }
+  }, [roster, selectedHkId])
+
+  async function handleRoomClick(rn) {
+    if (selectedHkId) {
+      await addAssignment(selectedHkId, rn)
+    } else {
+      onSelectRoom(rn)
+    }
+  }
 
   const paceById = useMemo(() => {
     const m = {}
@@ -246,98 +283,179 @@ function CleaningView({ propertyId, date, roster, assignments, progress, allRoom
         <StatCard label="Completion" value={`${completionRate}%`} tone={completionRate >= 80 ? 'positive' : 'brand'} />
       </div>
 
-      <AssignForm
-        roster={roster.filter((r) => r.active)}
-        unassignedRooms={unassignedRooms}
-        onAdd={addAssignment}
-        busy={busy}
-      />
-
-      <SectionCard title="Housekeeping assignments" subtitle={date}>
-        {byHousekeeper.length === 0 ? (
-          <div className="text-[14px] text-ink-muted py-8 text-center">No housekeepers on the roster yet.</div>
-        ) : (
-          <div className="space-y-4">
-            {byHousekeeper.map(({ housekeeper, items }) => {
-              const stats = paceById[housekeeper.housekeeper_id]
-              const done = items.filter((a) => a.status === 'done').length
-              const total = items.length
-              const pace = stats?.pace
-              return (
-                <div key={housekeeper.housekeeper_id} className="border border-line-subtle rounded-lg p-4 bg-surface-subtle">
-                  <div className="flex items-start gap-3 mb-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`text-[15px] font-semibold ${housekeeper.active ? 'text-ink' : 'text-ink-muted line-through'}`}>{housekeeper.name}</span>
-                        <PaceBadge pace={pace} done={done} total={total} />
-                        {stats?.estimated_finish && stats.estimated_finish !== 'Completed' && (
-                          <span className="text-[11px] text-ink-muted">ETA {stats.estimated_finish}</span>
-                        )}
+      <div className="grid gap-5 lg:grid-cols-2">
+        {/* LEFT — housekeeper containers (click to select, then add rooms) */}
+        <SectionCard
+          title="Housekeepers"
+          subtitle={selectedHkId ? 'Click rooms on the right to assign them.' : 'Pick a housekeeper, then click rooms on the right to assign.'}
+        >
+          {byHousekeeper.length === 0 ? (
+            <div className="text-[14px] text-ink-muted py-8 text-center">No housekeepers on the roster yet.</div>
+          ) : (
+            <div className="space-y-3">
+              {byHousekeeper.map(({ housekeeper, items }) => {
+                const stats = paceById[housekeeper.housekeeper_id]
+                const done = items.filter((a) => a.status === 'done').length
+                const total = items.length
+                const pace = stats?.pace
+                const isSelected = selectedHkId === housekeeper.housekeeper_id
+                const canSelect = housekeeper.active
+                return (
+                  <div
+                    key={housekeeper.housekeeper_id}
+                    onClick={() => canSelect && setSelectedHkId(isSelected ? null : housekeeper.housekeeper_id)}
+                    role="button"
+                    tabIndex={canSelect ? 0 : -1}
+                    aria-pressed={isSelected}
+                    className={`rounded-lg p-4 transition-colors ${
+                      isSelected
+                        ? 'border-2 border-brand bg-brand-tint/40 ring-2 ring-brand/20'
+                        : 'border border-line-subtle bg-surface-subtle'
+                    } ${canSelect ? 'cursor-pointer hover:border-brand/40' : 'opacity-70'}`}
+                  >
+                    <div className="flex items-start gap-3 mb-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-[15px] font-semibold ${housekeeper.active ? 'text-ink' : 'text-ink-muted line-through'}`}>{housekeeper.name}</span>
+                          <PaceBadge pace={pace} done={done} total={total} />
+                          {stats?.estimated_finish && stats.estimated_finish !== 'Completed' && (
+                            <span className="text-[11px] text-ink-muted">ETA {stats.estimated_finish}</span>
+                          )}
+                          {isSelected && <span className="badge-brand">Selected</span>}
+                        </div>
+                        <div className="text-[12px] text-ink-muted mt-0.5 tabular-nums">{done} / {total} rooms · {total > 0 ? Math.round((done / total) * 100) : 0}%</div>
                       </div>
-                      <div className="text-[12px] text-ink-muted mt-0.5 tabular-nums">{done} / {total} rooms · {total > 0 ? Math.round((done / total) * 100) : 0}%</div>
                     </div>
+                    {total > 0 && (
+                      <ProgressBar value={done} max={total} tone={done === total ? 'positive' : 'brand'} className="mb-3" />
+                    )}
+                    {total === 0 ? (
+                      <div className="text-[13px] text-ink-muted">No rooms assigned today.</div>
+                    ) : (
+                      <div className="flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
+                        {items.map((a) => (
+                          <RoomChip
+                            key={a.assignment_id}
+                            assignment={a}
+                            onCycle={(next) => setStatus(a, next)}
+                            onRemove={() => removeAssignment(a)}
+                          />
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  {total > 0 && (
-                    <ProgressBar value={done} max={total} tone={done === total ? 'positive' : 'brand'} className="mb-3" />
-                  )}
-                  {total === 0 ? (
-                    <div className="text-[13px] text-ink-muted">No rooms assigned today.</div>
-                  ) : (
-                    <div className="flex flex-wrap gap-1.5">
-                      {items.map((a) => (
-                        <RoomChip
-                          key={a.assignment_id}
-                          assignment={a}
-                          onCycle={(next) => setStatus(a, next)}
-                          onRemove={() => removeAssignment(a)}
-                          onOpen={() => onSelectRoom(a.room_number)}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </SectionCard>
+                )
+              })}
+            </div>
+          )}
+        </SectionCard>
 
-      <SectionCard
-        title="Rooms to assign"
-        actions={<span className="pill bg-surface-muted text-ink-body border border-line-subtle">{unassignedRooms.length}</span>}
-        subtitle={
-          cbConnected
-            ? `From Cloudbeds · departures + dirty/pickup minus already assigned · synced ${timeAgo(cloudbeds.synced_at)}`
-            : 'Cloudbeds not connected — falling back to every room in the property minus assigned'
-        }
-      >
-        {unassignedRooms.length === 0 ? (
-          <div className="text-[13px] text-ink-muted py-6 text-center">
-            {cbConnected ? 'Cloudbeds shows nothing needing cleaning today.' : 'Every room is assigned. Nice.'}
-          </div>
-        ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {unassignedRooms.map((rn) => {
-              const isDep = cbDepartures.has(rn)
-              const isDirty = cbDirty.has(rn)
-              const tag = isDep && isDirty ? 'D+✕' : isDep ? 'D' : isDirty ? '✕' : null
-              const title = `Room ${rn}${isDep ? ' · departing today' : ''}${isDirty ? ' · Cloudbeds: dirty' : ''}`
-              return (
+        {/* RIGHT — room picker */}
+        <SectionCard
+          title="Rooms to assign"
+          actions={
+            <div className="flex items-center gap-2">
               <button
-                key={rn}
-                onClick={() => onSelectRoom(rn)}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-line bg-white text-[12px] tabular-nums text-ink-body hover:border-ink-muted"
-                title={title}
+                type="button"
+                onClick={refreshCloudbeds}
+                disabled={syncing}
+                className="text-[12px] font-medium text-brand hover:text-brand-strong disabled:text-ink-muted disabled:cursor-wait"
+                title="Pull the latest dirty/departures snapshot from Cloudbeds"
               >
-                {rn}
-                {tag && <span className="text-[9px] font-semibold text-ink-muted">{tag}</span>}
+                {syncing ? 'Syncing…' : 'Refresh'}
               </button>
-              )
-            })}
-          </div>
-        )}
-      </SectionCard>
+              <span className="pill bg-surface-muted text-ink-body border border-line-subtle">{unassignedRooms.length}</span>
+            </div>
+          }
+          subtitle={
+            cbConnected
+              ? selectedHkId
+                ? `Click a room to assign it to ${roster.find((r) => r.housekeeper_id === selectedHkId)?.name || 'the selected housekeeper'}.`
+                : `From Cloudbeds · synced ${timeAgo(cloudbeds.synced_at)}`
+              : 'Cloudbeds not connected — falling back to every room in the property minus assigned'
+          }
+        >
+          {cbConnected && <RoomLegend />}
+          {unassignedRooms.length === 0 ? (
+            <div className="text-[13px] text-ink-muted py-6 text-center">
+              {cbConnected ? 'Cloudbeds shows nothing needing cleaning today.' : 'Every room is assigned. Nice.'}
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2 mt-3">
+              {unassignedRooms.map((rn) => {
+                const isDep = cbDepartures.has(rn)
+                const isDirty = cbDirty.has(rn)
+                const isInhouse = cbInhouse.has(rn)
+                const isClean = cbClean.has(rn)
+                const titleBits = []
+                if (isDep) titleBits.push('departing today')
+                if (isDirty) titleBits.push('Cloudbeds: dirty')
+                if (isInhouse) titleBits.push('in house (stayover)')
+                if (isClean) titleBits.push('clean & vacant')
+                const title = `Room ${rn}${titleBits.length ? ' · ' + titleBits.join(' · ') : ''}`
+                return (
+                  <PickerRoom
+                    key={rn}
+                    rn={rn}
+                    isDep={isDep}
+                    isDirty={isDirty}
+                    isInhouse={isInhouse}
+                    isClean={isClean}
+                    cbConnected={cbConnected}
+                    onClick={() => handleRoomClick(rn)}
+                    busy={busy}
+                    title={title}
+                  />
+                )
+              })}
+            </div>
+          )}
+        </SectionCard>
+      </div>
     </div>
+  )
+}
+
+function RoomLegend() {
+  const items = [
+    { label: 'Dirty',     cls: 'bg-danger-tint border-danger/30 text-danger' },
+    { label: 'Departure', cls: 'bg-warning-tint border-warning/30 text-warning' },
+    { label: 'Clean',     cls: 'bg-brand-tint border-brand/30 text-brand' },
+    { label: 'In house',  cls: 'bg-surface-muted border-line text-ink-muted' },
+  ]
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-[11px] text-ink-muted">
+      {items.map((i) => (
+        <span key={i.label} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border ${i.cls}`}>
+          <span className="font-medium">{i.label}</span>
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function PickerRoom({ rn, isDep, isDirty, isInhouse, isClean, cbConnected, onClick, busy, title }) {
+  // Color priority (most → least urgent): dirty > departing > clean > in-house.
+  // Dirty+departing (turnover) shows as dirty — most actionable for
+  // housekeeping. Clean+departing (rare, e.g., guest checked out and
+  // housekeeper already cleaned) shows as departing. The hover title
+  // surfaces every flag so nothing is hidden.
+  let cls = 'bg-white border-line text-ink-body hover:border-ink-muted'
+  if (cbConnected) {
+    if (isDirty)        cls = 'bg-danger-tint border-danger/30 text-danger hover:border-danger'
+    else if (isDep)     cls = 'bg-warning-tint border-warning/30 text-warning hover:border-warning'
+    else if (isClean)   cls = 'bg-brand-tint border-brand/30 text-brand hover:border-brand'
+    else if (isInhouse) cls = 'bg-surface-muted border-line text-ink-muted hover:border-ink-muted'
+  }
+  return (
+    <button
+      onClick={onClick}
+      disabled={busy}
+      title={title}
+      className={`w-12 h-10 rounded-md border text-[13px] font-medium tabular-nums transition-colors disabled:opacity-60 disabled:cursor-wait ${cls}`}
+    >
+      {rn}
+    </button>
   )
 }
 
@@ -349,52 +467,31 @@ function PaceBadge({ pace, done, total }) {
   return <span className="badge-neutral">Not started</span>
 }
 
-function RoomChip({ assignment, onCycle, onRemove, onOpen }) {
+function RoomChip({ assignment, onCycle, onRemove }) {
   const status = assignment.status
   const next = status === 'open' ? 'in_progress' : status === 'in_progress' ? 'done' : 'open'
-  const icon = status === 'open' ? '▷' : status === 'in_progress' ? '✓' : '↺'
   const cls =
     status === 'done'        ? 'bg-positive-tint border-positive/30 text-positive'
   : status === 'in_progress' ? 'bg-brand-tint border-brand/30 text-brand'
                              : 'bg-white border-line text-ink'
+  const title = `Room ${assignment.room_number} · ${status.replace('_', ' ')} · click to cycle status`
   return (
-    <div className={`inline-flex items-center gap-1 pl-2 pr-1 py-1 rounded-full border text-[12px] ${cls}`}>
-      <button onClick={onOpen} className="font-medium tabular-nums">{assignment.room_number}</button>
-      <button onClick={() => onCycle(next)} title="Cycle status" className="text-[12px] opacity-70 hover:opacity-100 px-1">{icon}</button>
-      <button onClick={onRemove} title="Remove" className="text-ink-muted hover:text-danger text-[14px] leading-none px-0.5">×</button>
+    <div className={`relative inline-block`}>
+      <button
+        onClick={() => onCycle(next)}
+        title={title}
+        className={`w-12 h-10 rounded-md border text-[13px] font-medium tabular-nums hover:brightness-95 ${cls}`}
+      >
+        {assignment.room_number}
+      </button>
+      <button
+        onClick={onRemove}
+        title="Unassign"
+        className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-white border border-line text-ink-muted hover:text-danger hover:border-danger flex items-center justify-center text-[10px] leading-none shadow-sm"
+      >
+        ×
+      </button>
     </div>
-  )
-}
-
-function AssignForm({ roster, unassignedRooms, onAdd, busy }) {
-  const [housekeeperId, setHousekeeperId] = useState('')
-  const [roomsInput, setRoomsInput] = useState('')
-
-  function submit(e) {
-    e.preventDefault()
-    if (!housekeeperId || !roomsInput.trim()) return
-    const list = roomsInput.split(/[,\s]+/).map((r) => r.trim()).filter(Boolean)
-    list.forEach((rn) => onAdd(housekeeperId, rn))
-    setRoomsInput('')
-  }
-
-  return (
-    <form onSubmit={submit} className="card bg-surface-subtle">
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="flex-1 min-w-[180px]">
-          <label className="label">Housekeeper</label>
-          <select className="select" value={housekeeperId} onChange={(e) => setHousekeeperId(e.target.value)}>
-            <option value="">Choose…</option>
-            {roster.map((h) => <option key={h.housekeeper_id} value={h.housekeeper_id}>{h.name}</option>)}
-          </select>
-        </div>
-        <div className="flex-[2] min-w-[240px]">
-          <label className="label">Rooms <span className="text-ink-muted font-normal">({unassignedRooms.length} unassigned)</span></label>
-          <input className="input" placeholder="101, 102 205…" value={roomsInput} onChange={(e) => setRoomsInput(e.target.value)} />
-        </div>
-        <button className="btn-primary" disabled={busy || !housekeeperId || !roomsInput.trim()}>Assign</button>
-      </div>
-    </form>
   )
 }
 

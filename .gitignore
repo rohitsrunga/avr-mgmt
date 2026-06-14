@@ -250,3 +250,8 @@ frontend/.env.local
 # Secrets / certs that may accidentally end up here
 *.pem
 *.key
+
+# QuickBooks OAuth token cache (contains live refresh token)
+scripts/.qb_tokens.json
+scripts/.qb_localhost_cert.pem
+scripts/.qb_localhost_key.pem
