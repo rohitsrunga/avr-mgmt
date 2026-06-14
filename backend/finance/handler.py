@@ -16,13 +16,19 @@ reports are not gated** — so we drive everything off two stock reports:
 
   * #174 "Daily Transactions Report by Transaction Type" — per-transaction
     rows grouped by transaction_type, carrying reservation_number,
-    primary_guest_full_name, debit/credit and card last-4. Charges (Room
+    primary_guest_full_name, debit/credit and stay dates. Charges (Room
     Rate / Room Revenue / Tax / Adjustment) → stage 1; Payment → stage 2.
-    Its real date filter is `service_date`; we neutralise that and activate
-    the `transaction_datetime_property_timezone` filter for txn-date anchoring.
+    We anchor on **checkout date** (neutralising the report's service_date /
+    transaction_datetime / checkin_date filters) so each reservation's FULL
+    folio + payments land in the window its stay completed in. That makes
+    charged ≈ received for paid stays, so a gap is a *real* balance due
+    rather than a timing artifact of lump-sum payments vs per-night charges.
   * #226 "Payouts by Transaction Date" — payout rows grouped by
     payout_date / transaction_date / reservation code, with gross
-    (total_amount), fee_amount and net_amount (what hits the bank).
+    (total_amount), fee_amount and net_amount (what hits the bank). Payouts
+    lag the stay and a stay's payments post before checkout, so we pull this
+    over a padded transaction-date window and keep only payouts whose
+    reservation is in the checkout-anchored set.
 
 We join the two on the reservation confirmation code: a stay drops off the
 Outstanding list once a payout's gross accounts for its received payment.
@@ -63,6 +69,13 @@ PAYMENT_TYPES = {"payment"}
 
 # Treat sub-cent gaps as fully reconciled.
 EPS = 0.01
+
+# Payouts lag the stay, and a stay's payments can post well before checkout
+# (deposits at booking) or shortly after, so we pull the payout report over a
+# padded transaction-date window around the selected checkout range and keep
+# only payouts belonging to the stays we selected.
+PAYOUT_LOOKBACK_DAYS = 180
+PAYOUT_LOOKAHEAD_DAYS = 45
 
 router = Router()
 
@@ -195,6 +208,8 @@ def _parse_transactions(resp):
     deb_c = col("debit_amount")
     cre_c = col("credit_amount")
     card_c = col("card_last_4_digits")
+    ci_c = col("checkin_date")
+    co_c = col("checkout_date")
 
     stays = {}
     for i in range(n):
@@ -206,11 +221,16 @@ def _parse_transactions(resp):
         credit = float(cre_c[i] or 0)
         s = stays.setdefault(res, {
             "reservation": res, "guest": "", "charged": 0.0,
-            "received": 0.0, "cards": set(),
+            "received": 0.0, "cards": set(), "checkin": "", "checkout": "",
         })
         guest = _display(guest_c[i])
         if guest and guest != "-" and not s["guest"]:
             s["guest"] = guest
+        for key, src in (("checkin", ci_c), ("checkout", co_c)):
+            if not s[key]:
+                val = _display(src[i])
+                if val and val != "-":
+                    s[key] = val
         if str(ttype).strip().lower() in PAYMENT_TYPES:
             s["received"] += credit - debit
             card = card_c[i]
@@ -270,6 +290,8 @@ def _reconcile(txns, payouts):
             "reservation": res,
             "guest": t["guest"] or "—",
             "cards": sorted(t["cards"]),
+            "checkin": t.get("checkin", ""),
+            "checkout": t.get("checkout", ""),
             "charged": _round2(t["charged"]),
             "received": _round2(received),
             "posted_gross": _round2(posted_gross),
@@ -349,22 +371,30 @@ def reconciliation(event, params):
 
     cb_pid = _cb_property_id(api_key)
 
+    # Stage 1+2: anchor each reservation's full folio on its checkout date.
     txn_resp = _run_stock_report(
         api_key, cb_pid, REPORT_TRANSACTIONS,
         _make_date_mutator(
-            "transaction_datetime_property_timezone",
-            {"service_date"}, d_from, d_to,
+            "checkout_date",
+            {"service_date", "transaction_datetime_property_timezone", "checkin_date"},
+            d_from, d_to,
         ),
         details=True,
     )
+    txns = _parse_transactions(txn_resp)
+
+    # Stage 3: pull payouts over a padded transaction-date window so a stay's
+    # earlier/later-posting payments are captured, then keep only payouts for
+    # the stays selected above.
+    pay_from = (datetime.fromisoformat(d_from).date() - timedelta(days=PAYOUT_LOOKBACK_DAYS)).isoformat()
+    pay_to = (datetime.fromisoformat(d_to).date() + timedelta(days=PAYOUT_LOOKAHEAD_DAYS)).isoformat()
     payout_resp = _run_stock_report(
         api_key, cb_pid, REPORT_PAYOUTS,
-        _make_date_mutator("transaction_date", {"payout_date"}, d_from, d_to),
+        _make_date_mutator("transaction_date", {"payout_date"}, pay_from, pay_to),
         details=False,
     )
+    payouts = {r: p for r, p in _parse_payouts(payout_resp).items() if r in txns}
 
-    txns = _parse_transactions(txn_resp)
-    payouts = _parse_payouts(payout_resp)
     stays, exceptions, totals = _reconcile(txns, payouts)
 
     return ok({
