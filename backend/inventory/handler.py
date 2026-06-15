@@ -12,6 +12,12 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timezone
 from decimal import Decimal
+from urllib.parse import quote_plus
+
+
+def _samsclub_search_url(name):
+    """Receipt SKUs aren't the website's product IDs, so link by product name."""
+    return f"https://www.samsclub.com/search?q={quote_plus(name)}" if name else ""
 
 from shared.auth import (
     ALL_ROLES,
@@ -71,6 +77,8 @@ def _serialize(item):
         "item_id": item.get("item_id", ""),
         "item_name": item.get("item_name", ""),
         "category": item.get("category", ""),
+        "sku": item.get("sku", ""),
+        "url": item.get("url", ""),
         "vendor": item.get("vendor", ""),
         "current_stock": stock,
         "par_level": par,
@@ -162,9 +170,12 @@ def update_item(event, params):
                 update_fields[field] = int(body[field])
             except (TypeError, ValueError):
                 return bad_request(f"{field} must be an integer")
-    for field in ["item_name", "unit", "vendor", "notes"]:
+    for field in ["item_name", "unit", "vendor", "notes", "sku", "url"]:
         if field in body:
             update_fields[field] = body[field] or ""
+    # If the name changed without an explicit url, refresh the search link from it.
+    if "item_name" in update_fields and "url" not in body:
+        update_fields["url"] = _samsclub_search_url(update_fields["item_name"])
     if "is_active" in body:
         update_fields["is_active"] = bool(body["is_active"])
     update_fields["last_updated"] = _now()
@@ -208,12 +219,16 @@ def create_item(event, params):
         return bad_request("category and item_name required")
     item_id = body.get("item_id") or str(uuid.uuid4())[:8]
     identity = get_identity(event)
+    sku = (body.get("sku") or "").strip()
+    url = body.get("url") or _samsclub_search_url(item_name)
     item = {
         "PK": f"PROPERTY#{pid}",
         "SK": f"CATEGORY#{category}#ITEM#{item_id}",
         "item_id": item_id,
         "item_name": item_name,
         "category": category,
+        "sku": sku,
+        "url": url,
         "vendor": body.get("vendor", ""),
         "current_stock": int(body.get("current_stock", 0)),
         "par_level": int(body.get("par_level", 0)),

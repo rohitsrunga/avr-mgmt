@@ -30,15 +30,13 @@ export const ROLES = [
   { id: 'breakfast',    label: 'Breakfast',    tabs: ['checklists','inventory'] },
 ]
 
-// Includes the new "linen" category that absorbs the former Linen tab.
+// Inventory categories shown in the Inventory tab. Ids are kept stable (they
+// key the DynamoDB SK), only labels are display text.
 export const INVENTORY_CATEGORIES = [
-  { id: 'breakfast_food', label: 'Breakfast Food' },
-  { id: 'breakfast_beverage', label: 'Breakfast Beverage' },
-  { id: 'breakfast_supply', label: 'Breakfast Supplies' },
+  { id: 'breakfast_food', label: 'Food' },
+  { id: 'breakfast_beverage', label: 'Beverage' },
+  { id: 'breakfast_supply', label: 'Food Supplies' },
   { id: 'housekeeping', label: 'Housekeeping' },
-  { id: 'linen', label: 'Linen' },
-  { id: 'amenity', label: 'Amenities' },
-  { id: 'front_desk', label: 'Front Desk' },
 ]
 
 export const ROOM_EQUIPMENT_FIELDS = [

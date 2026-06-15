@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Banner from '../components/Banner'
 import CopyLink from '../components/CopyLink'
 import ProgressBar from '../components/ProgressBar'
@@ -28,28 +28,30 @@ export default function Checklists() {
     <div className="space-y-6 fade-in">
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex-1">
-          <h1 className="page-title">Checklists</h1>
-          <p className="page-subtitle">{property?.name} · today's shift{dinnerOn ? ', dinner' : ''}, marketing, P&amp;F and standalone lists. Resets at midnight.</p>
+          <h1 className="page-title">Front Desk</h1>
+          <p className="page-subtitle">{property?.name} · current shift checklist{dinnerOn ? ', dinner orders' : ''} and Park &amp; Fly. Resets at midnight.</p>
         </div>
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input max-w-[180px]" />
       </div>
 
-      <OccupancyBANs propertyId={propertyId} />
+      {/* Occupancy BANs are sourced from Cloudbeds, which only Saco Bay uses. */}
+      {propertyId === 'saco_bay' && <OccupancyBANs propertyId={propertyId} />}
 
-      <ShiftRow propertyId={propertyId} date={date} onOpenShift={setOpenShift} />
-
-      {dinnerOn ? (
-        <div className="grid lg:grid-cols-3 gap-5">
-          <div className="lg:col-span-2 space-y-5">
-            <DinnerOrders propertyId={propertyId} date={date} />
-          </div>
-          <div className="space-y-5">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 lg:items-stretch">
+        <div className="lg:col-span-2 min-w-0 min-h-0">
+          <ShiftPager propertyId={propertyId} date={date} onOpenShift={setOpenShift} />
+        </div>
+        <div className="flex flex-col gap-5 min-w-0 min-h-0">
+          {dinnerOn && (
+            <div className="min-w-0 lg:flex-1 min-h-0 lg:flex">
+              <DinnerOrders propertyId={propertyId} date={date} />
+            </div>
+          )}
+          <div className="min-w-0 lg:flex-1 min-h-0 lg:flex">
             <ParkFlyPanel propertyId={propertyId} />
           </div>
         </div>
-      ) : (
-        <ParkFlyPanel propertyId={propertyId} />
-      )}
+      </div>
 
       {openShift && (
         <ShiftSheet
@@ -151,10 +153,22 @@ function timeAgo(iso) {
   return `${Math.round(hrs / 24)}d ago`
 }
 
-function ShiftRow({ propertyId, date, onOpenShift }) {
+// Which shift is "live" given the local clock: 1st 7a–3p, 2nd 3p–11p,
+// 3rd 11p–7a. Used as the pager's default so front desk lands on the
+// checklist that's actually in play.
+function shiftIndexForNow() {
+  const h = new Date().getHours()
+  if (h >= 7 && h < 15) return 0
+  if (h >= 15 && h < 23) return 1
+  return 2
+}
+
+function ShiftPager({ propertyId, date, onOpenShift }) {
   const api = useApi()
   const [data, setData] = useState({}) // { '1st': { tasks, handoff } }
   const [error, setError] = useState('')
+  const [idx, setIdx] = useState(shiftIndexForNow)
+  const touchX = useRef(null)
 
   async function load() {
     try {
@@ -188,74 +202,111 @@ function ShiftRow({ propertyId, date, onOpenShift }) {
     }
   }
 
+  const go = (delta) => setIdx((i) => Math.min(SHIFTS.length - 1, Math.max(0, i + delta)))
+  function onTouchStart(e) { touchX.current = e.touches[0].clientX }
+  function onTouchEnd(e) {
+    if (touchX.current == null) return
+    const dx = e.changedTouches[0].clientX - touchX.current
+    if (Math.abs(dx) > 40) go(dx < 0 ? 1 : -1)
+    touchX.current = null
+  }
+
+  const s = SHIFTS[idx]
+  const d = data[s.id] || { tasks: [], handoff: { notes: '' } }
+  const completed = d.tasks.filter((t) => t.completed).length
+  const pct = d.tasks.length ? Math.round((completed / d.tasks.length) * 100) : 0
+  const allDone = d.tasks.length > 0 && completed === d.tasks.length
+  const status = pct === 0 ? 'Not started' : allDone ? 'Closed' : `${pct}%`
+  const nowIdx = shiftIndexForNow()
+
+  const grouped = useMemo(() => {
+    const m = new Map()
+    for (const t of d.tasks) {
+      const cat = t.category || 'General'
+      if (!m.has(cat)) m.set(cat, [])
+      m.get(cat).push(t)
+    }
+    return Array.from(m.entries())
+  }, [d.tasks])
+
   return (
-    <div className="space-y-3">
+    <div className="card h-full flex flex-col lg:min-h-[480px]" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       {error && <Banner tone="error">{error}</Banner>}
-      <div className="grid md:grid-cols-3 gap-4">
-        {SHIFTS.map((s) => {
-          const d = data[s.id] || { tasks: [], handoff: { notes: '' } }
-          const completed = d.tasks.filter((t) => t.completed).length
-          const pct = d.tasks.length ? Math.round((completed / d.tasks.length) * 100) : 0
-          const allDone = d.tasks.length > 0 && completed === d.tasks.length
-          const upcoming = d.tasks.filter((t) => !t.completed).slice(0, 8)
-          const status = pct === 0 ? 'Not started' : allDone ? 'Closed' : `${pct}%`
-          const tone = allDone ? 'positive' : pct === 0 ? 'neutral' : 'brand'
-          return (
-            <div key={s.id} className="card flex flex-col min-h-[460px]">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-[14px] font-semibold text-ink">{s.label} shift · {s.range}</h3>
-                <span className={`pill ${pillTone(tone)}`}>{status}</span>
-              </div>
-              <ProgressBar value={completed} max={Math.max(1, d.tasks.length)} tone={allDone ? 'positive' : 'brand'} className="mb-3" />
 
-              <div className="flex-1 min-h-0">
-                {d.tasks.length === 0 ? (
-                  <div className="text-[12px] text-ink-muted py-2">No tasks defined for this shift.</div>
-                ) : allDone && d.handoff?.notes ? (
-                  <div>
-                    <div className="text-[10px] uppercase tracking-[0.08em] text-ink-muted font-semibold mb-1">Handoff notes</div>
-                    <div className="text-[12px] bg-surface-muted rounded-lg p-2.5 leading-snug text-ink-body">{d.handoff.notes}</div>
-                  </div>
-                ) : allDone ? (
-                  <div className="text-[12px] text-ink-muted py-2">All {d.tasks.length} tasks complete. Add handoff notes from the side sheet.</div>
-                ) : (
-                  <div>
-                    <div className="text-[10px] uppercase tracking-[0.08em] text-ink-muted font-semibold mb-1.5">
-                      Up next · {upcoming.length} of {d.tasks.length - completed} remaining
-                    </div>
-                    <ul className="text-[13px] space-y-1">
-                      {upcoming.map((t) => (
-                        <li key={t.task_id}>
-                          <button
-                            onClick={() => toggleTask(s.id, t)}
-                            className="w-full flex gap-2 items-start text-left px-1 py-1 rounded hover:bg-surface-subtle"
-                          >
-                            <span className="w-3.5 h-3.5 rounded border border-line-strong shrink-0 mt-0.5" />
-                            <span className="text-ink-body">{t.task_text}</span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-
-              <button onClick={() => onOpenShift({ id: s.id, label: s.label, range: s.range, total: d.tasks.length, onChange: load })} className="mt-3 text-[12px] text-brand font-medium hover:underline self-start">
-                Open all {d.tasks.length} tasks →
-              </button>
-            </div>
-          )
-        })}
+      {/* Pager header: arrows + active shift + live badge */}
+      <div className="flex items-center justify-between gap-2">
+        <button
+          onClick={() => go(-1)} disabled={idx === 0}
+          className="w-9 h-9 grid place-items-center rounded-full text-ink-muted hover:bg-surface-muted disabled:opacity-30 disabled:hover:bg-transparent text-xl shrink-0"
+          aria-label="Previous shift"
+        >‹</button>
+        <div className="text-center min-w-0">
+          <div className="flex items-center justify-center gap-2">
+            <h2 className="section-title">{s.label} shift</h2>
+            {idx === nowIdx && <span className="pill bg-brand-tint text-brand">Now</span>}
+          </div>
+          <div className="text-[12px] text-ink-muted">{s.range} · {status}</div>
+        </div>
+        <button
+          onClick={() => go(1)} disabled={idx === SHIFTS.length - 1}
+          className="w-9 h-9 grid place-items-center rounded-full text-ink-muted hover:bg-surface-muted disabled:opacity-30 disabled:hover:bg-transparent text-xl shrink-0"
+          aria-label="Next shift"
+        >›</button>
       </div>
+
+      <ProgressBar value={completed} max={Math.max(1, d.tasks.length)} tone={allDone ? 'positive' : 'brand'} className="mt-2.5 mb-2" />
+
+      {/* Segmented quick-jump between shifts */}
+      <div className="grid grid-cols-3 gap-1.5 mb-3">
+        {SHIFTS.map((sh, i) => (
+          <button
+            key={sh.id} onClick={() => setIdx(i)}
+            className={`text-[12px] font-medium rounded-lg py-1.5 border transition-colors ${
+              i === idx ? 'bg-brand-tint border-brand text-brand' : 'bg-white border-line-subtle text-ink-muted hover:text-ink'
+            }`}
+          >
+            {sh.label}{i === nowIdx ? ' ·' : ''}
+          </button>
+        ))}
+      </div>
+
+      <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto -mx-1 px-1 space-y-4">
+        {allDone && d.handoff?.notes && (
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.08em] text-ink-muted font-semibold mb-1">Handoff notes</div>
+            <div className="text-[13px] bg-surface-muted rounded-lg p-2.5 leading-snug text-ink-body">{d.handoff.notes}</div>
+          </div>
+        )}
+        {d.tasks.length === 0 ? (
+          <div className="text-[13px] text-ink-muted py-8 text-center">No tasks defined for this shift.</div>
+        ) : (
+          grouped.map(([category, list]) => (
+            <div key={category}>
+              {category !== 'General' && (
+                <div className="text-[11px] uppercase tracking-[0.06em] text-ink-muted font-semibold mb-1.5">{category}</div>
+              )}
+              <ul className="divide-y divide-line-subtle border border-line-subtle rounded-lg">
+                {list.map((t) => (
+                  <li key={t.task_id} className="px-3 py-2.5 flex items-center gap-3">
+                    <Check checked={t.completed} onChange={() => toggleTask(s.id, t)} />
+                    <span className={`flex-1 text-[14px] ${t.completed ? 'line-through text-ink-muted' : 'text-ink'}`}>{t.task_text}</span>
+                    {t.completed_by && <span className="text-[11px] text-ink-muted">{t.completed_by}</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
+        )}
+      </div>
+
+      <button
+        onClick={() => onOpenShift({ id: s.id, label: s.label, range: s.range, total: d.tasks.length, onChange: load })}
+        className="mt-3 text-[12px] text-brand font-medium hover:underline self-start"
+      >
+        Open all {d.tasks.length} tasks &amp; handoff →
+      </button>
     </div>
   )
-}
-
-function pillTone(tone) {
-  return tone === 'positive' ? 'bg-positive-tint text-positive'
-       : tone === 'warning'  ? 'bg-warning-tint text-warning'
-       : tone === 'brand'    ? 'bg-brand-tint text-brand'
-                             : 'bg-surface-muted text-ink-body border border-line-subtle'
 }
 
 function ShiftSheet({ propertyId, date, shift, isMgmt, onClose }) {
@@ -439,13 +490,14 @@ function DinnerOrders({ propertyId, date }) {
       title="Dinner orders · tonight"
       subtitle="Prep by 6:00 pm"
       actions={<span className="pill bg-brand-tint text-brand">{open} open / {orders.length}</span>}
+      className="w-full min-w-0 lg:h-full flex flex-col min-h-0"
     >
       {error && <Banner tone="error">{error}</Banner>}
       {formUrl && <div className="mb-3"><CopyLink url={formUrl} label="Guest order form" /></div>}
       {orders.length === 0 ? (
         <div className="text-[14px] text-ink-muted py-10 text-center">No orders today.</div>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
           <table className="table-clean text-[13px]">
             <thead>
               <tr>
@@ -504,7 +556,7 @@ function ParkFlyPanel({ propertyId }) {
     try {
       setError('')
       const res = await api.get(`/api/parkfly/${propertyId}`).catch(() => ({ vehicles: [] }))
-      setVehicles((res.vehicles || []).slice(0, 6))
+      setVehicles(res.vehicles || [])
     } catch (e) { setError(e.message) }
   }
   useEffect(() => { load() /* eslint-disable-next-line */ }, [propertyId])
@@ -524,13 +576,14 @@ function ParkFlyPanel({ propertyId }) {
           <button onClick={() => setShowForm((s) => !s)} className="text-[12px] text-brand font-semibold">{showForm ? 'Cancel' : '+ New'}</button>
         </div>
       }
+      className="w-full min-w-0 lg:h-full flex flex-col min-h-0"
     >
       {error && <Banner tone="error">{error}</Banner>}
       {showForm && <NewVehicleForm propertyId={propertyId} onCreated={() => { setShowForm(false); load() }} />}
       {vehicles.length === 0 ? (
         <div className="text-[13px] text-ink-muted py-6 text-center">No active tags.</div>
       ) : (
-        <div className="space-y-2 text-[12px]">
+        <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto space-y-2 text-[12px]">
           {vehicles.map((v) => (
             <div key={v.vehicle_id} className="flex items-center justify-between border-b border-line-subtle pb-2 last:border-b-0">
               <div className="min-w-0">

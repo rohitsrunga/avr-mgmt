@@ -11,11 +11,33 @@ import { useProperty } from '../hooks/useProperty'
 const MGMT = new Set(['owner', 'manager'])
 const CATEGORY_MAP = Object.fromEntries(INVENTORY_CATEGORIES.map((c) => [c.id, c]))
 
+// Colloquial unit label, pluralized for the count (e.g. 4 → "packs", 1 → "loaf").
+const PLURALS = { loaf: 'loaves', box: 'boxes', bunch: 'bunches' }
+function unitLabel(unit, n) {
+  const u = !unit || unit === 'each' ? 'unit' : unit
+  if (Number(n) === 1) return u
+  return PLURALS[u] || `${u}s`
+}
+
+// Clickable product name → Sam's Club page when the item carries a SKU/url.
+function ItemName({ item, className = '' }) {
+  if (item.url) {
+    return (
+      <a href={item.url} target="_blank" rel="noopener noreferrer"
+        className={`text-brand hover:underline ${className}`} title="Open Sam's Club product page">
+        {item.item_name}
+      </a>
+    )
+  }
+  return <span className={className}>{item.item_name}</span>
+}
+
 export default function Inventory() {
   const api = useApi()
   const { user } = useAuth()
   const { propertyId, property } = useProperty()
   const isMgmt = MGMT.has(user?.role)
+  const [mode, setMode] = useState('count') // 'count' (walk & count) | 'manage'
   const [activeCategory, setActiveCategory] = useState('all') // 'all' or category id
   const [allItems, setAllItems] = useState([])
   const [vendors, setVendors] = useState([])
@@ -29,7 +51,9 @@ export default function Inventory() {
         api.get(`/api/inventory/${propertyId}`).catch(() => ({ items: [] })),
         api.get(`/api/inventory/${propertyId}/vendors`).catch(() => ({ vendors: [] })),
       ])
-      setAllItems(all.items || [])
+      // Only show categories surfaced in the UI — legacy linen/amenity/front_desk
+      // rows may still exist in the table but are no longer tracked here.
+      setAllItems((all.items || []).filter((it) => CATEGORY_MAP[it.category]))
       setVendors(vend.vendors || [])
     } catch (e) { setError(e.message) }
   }
@@ -48,6 +72,14 @@ export default function Inventory() {
     try {
       await api.del(`/api/inventory/${propertyId}/items/${item.item_id}`, { category: item.category })
       load()
+    } catch (e) { setError(e.message) }
+  }
+
+  // Bulk save the walk & count draft in one request.
+  async function saveCounts(updates) {
+    try {
+      await api.post(`/api/inventory/${propertyId}/items/bulk-update`, { updates, change_type: 'stock_check' })
+      await load()
     } catch (e) { setError(e.message) }
   }
 
@@ -83,9 +115,13 @@ export default function Inventory() {
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex-1">
           <h1 className="page-title">Inventory</h1>
-          <p className="page-subtitle">{property?.name} · {allItems.length} SKUs across {INVENTORY_CATEGORIES.length} categories. Walk, scan, restock.</p>
+          <p className="page-subtitle">{property?.name} · {allItems.length} SKUs across {INVENTORY_CATEGORIES.length} categories. Walk, count, reorder.</p>
         </div>
-        {isMgmt && (
+        <div className="flex rounded-full bg-surface-muted border border-line-subtle p-0.5">
+          <button onClick={() => setMode('count')} className={`px-3.5 py-1.5 text-[13px] rounded-full transition ${mode === 'count' ? 'bg-surface shadow-sm text-ink font-medium' : 'text-ink-muted'}`}>Count</button>
+          <button onClick={() => setMode('manage')} className={`px-3.5 py-1.5 text-[13px] rounded-full transition ${mode === 'manage' ? 'bg-surface shadow-sm text-ink font-medium' : 'text-ink-muted'}`}>Manage</button>
+        </div>
+        {isMgmt && mode === 'manage' && (
           <button onClick={() => setShowAdd((s) => !s)} className="btn-secondary">
             {showAdd ? 'Cancel' : 'Add item'}
           </button>
@@ -106,7 +142,7 @@ export default function Inventory() {
         ))}
       </div>
 
-      {showAdd && isMgmt && (
+      {showAdd && isMgmt && mode === 'manage' && (
         <AddItemForm
           propertyId={propertyId}
           category={activeCategory === 'all' ? INVENTORY_CATEGORIES[0].id : activeCategory}
@@ -115,16 +151,115 @@ export default function Inventory() {
         />
       )}
 
-      <StockTable
-        label={activeCategory === 'all' ? 'All items' : CATEGORY_MAP[activeCategory]?.label || 'Items'}
-        items={filteredItems}
-        isMgmt={isMgmt}
-        vendors={vendors}
-        onUpdate={updateField}
-        onDelete={deleteItem}
-      />
+      {mode === 'count' ? (
+        <CountSheet items={filteredItems} activeCategory={activeCategory} onSave={saveCounts} />
+      ) : (
+        <StockTable
+          label={activeCategory === 'all' ? 'All items' : CATEGORY_MAP[activeCategory]?.label || 'Items'}
+          items={filteredItems}
+          isMgmt={isMgmt}
+          vendors={vendors}
+          onUpdate={updateField}
+          onDelete={deleteItem}
+        />
+      )}
 
       <VendorPanel vendorSummary={vendorSummary} />
+    </div>
+  )
+}
+
+// ── Walk & count: big steppers grouped by category, one bulk save ──────────
+function CountSheet({ items, activeCategory, onSave }) {
+  const [draft, setDraft] = useState({}) // item_id -> count (only dirty entries)
+  const [saving, setSaving] = useState(false)
+
+  // Drop drafts that the latest server load already reflects.
+  useEffect(() => {
+    setDraft((d) => {
+      const next = {}
+      for (const it of items) {
+        if (d[it.item_id] != null && d[it.item_id] !== it.current_stock) next[it.item_id] = d[it.item_id]
+      }
+      return next
+    })
+  }, [items])
+
+  const valueFor = (it) => (draft[it.item_id] != null ? draft[it.item_id] : it.current_stock)
+  const setValue = (it, v) => setDraft((d) => ({ ...d, [it.item_id]: Math.max(0, v) }))
+
+  const dirty = useMemo(() => {
+    return items
+      .filter((it) => draft[it.item_id] != null && draft[it.item_id] !== it.current_stock)
+      .map((it) => ({ item_id: it.item_id, category: it.category, current_stock: draft[it.item_id] }))
+  }, [items, draft])
+
+  // Group by category when viewing all; otherwise a single flat group.
+  const groups = useMemo(() => {
+    if (activeCategory !== 'all') return [{ id: activeCategory, label: CATEGORY_MAP[activeCategory]?.label, items }]
+    return INVENTORY_CATEGORIES
+      .map((c) => ({ id: c.id, label: c.label, items: items.filter((i) => i.category === c.id) }))
+      .filter((g) => g.items.length > 0)
+  }, [items, activeCategory])
+
+  async function save() {
+    if (!dirty.length) return
+    setSaving(true)
+    try { await onSave(dirty); setDraft({}) } finally { setSaving(false) }
+  }
+
+  if (items.length === 0) {
+    return <SectionCard title="Walk & count"><div className="text-[14px] text-ink-muted py-10 text-center">No items.</div></SectionCard>
+  }
+
+  return (
+    <div className="space-y-4">
+      {groups.map((g) => (
+        <SectionCard key={g.id} title={g.label}
+          actions={<span className="text-[11px] text-ink-muted">{g.items.length} item{g.items.length === 1 ? '' : 's'}</span>}>
+          <div className="divide-y divide-line-subtle">
+            {g.items.map((it) => {
+              const val = valueFor(it)
+              const status = it.status || 'ok'
+              const isDirty = draft[it.item_id] != null && draft[it.item_id] !== it.current_stock
+              const dot = status === 'critical' ? 'bg-danger' : status === 'low' ? 'bg-warning' : 'bg-emerald-400'
+              return (
+                <div key={`${it.category}#${it.item_id}`} className="flex items-center gap-3 py-2.5">
+                  <span className={`h-2 w-2 rounded-full shrink-0 ${dot}`} title={status} />
+                  <div className="min-w-0 flex-1">
+                    <ItemName item={it} className="text-[14px] font-medium" />
+                    <div className="text-[11px] text-ink-muted">
+                      Typical inventory: {it.par_level} {unitLabel(it.unit, it.par_level)}{it.sku ? ` · #${it.sku}` : ''}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button onClick={() => setValue(it, val - 1)}
+                      className="h-9 w-9 rounded-full border border-line text-ink-body text-[20px] leading-none active:scale-95 disabled:opacity-30"
+                      disabled={val <= 0} aria-label="decrease">−</button>
+                    <input type="number" inputMode="numeric" value={val}
+                      onChange={(e) => setValue(it, Number(e.target.value))}
+                      className={`input w-14 text-center px-1 py-1.5 min-h-0 text-[15px] font-semibold ${isDirty ? 'ring-2 ring-brand/40' : ''}`} />
+                    <button onClick={() => setValue(it, val + 1)}
+                      className="h-9 w-9 rounded-full border border-line text-ink-body text-[20px] leading-none active:scale-95"
+                      aria-label="increase">+</button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </SectionCard>
+      ))}
+
+      {/* Sticky save bar — only when there are uncounted changes. */}
+      {dirty.length > 0 && (
+        <div className="sticky bottom-3 z-10 flex items-center justify-between gap-3 card shadow-lg bg-surface border-brand/30">
+          <span className="text-[13px] text-ink-body">{dirty.length} count{dirty.length === 1 ? '' : 's'} changed</span>
+          <div className="flex gap-2">
+            <button onClick={() => setDraft({})} className="btn-secondary" disabled={saving}>Discard</button>
+            <button onClick={save} className="btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save counts'}</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -143,10 +278,11 @@ function StockTable({ label, items, isMgmt, vendors, onUpdate, onDelete }) {
             <thead>
               <tr>
                 <th>Item</th>
+                <th className="w-24">SKU</th>
                 <th className="w-24">Category</th>
                 <th className="w-16">Unit</th>
-                <th className="w-20 text-right">Current</th>
-                <th className="w-16 text-right">Par</th>
+                <th className="w-20 text-right">On hand</th>
+                <th className="w-16 text-right">Typical</th>
                 <th className="w-32 pl-4">Level</th>
                 <th className="w-32 text-right">Vendor</th>
                 {isMgmt && <th className="w-8"></th>}
@@ -159,7 +295,8 @@ function StockTable({ label, items, isMgmt, vendors, onUpdate, onDelete }) {
                 const tone = status === 'critical' ? 'bg-danger-tint/40' : status === 'low' ? 'bg-warning-tint/30' : ''
                 return (
                   <tr key={`${item.category}#${item.item_id}`} className={tone}>
-                    <td className="text-ink">{item.item_name}</td>
+                    <td className="text-ink"><ItemName item={item} /></td>
+                    <td className="text-ink-muted text-[12px] tabular-nums">{item.sku || '—'}</td>
                     <td className="text-ink-muted text-[12px]">{cat}</td>
                     <td className="text-ink-muted text-[12px]">{item.unit}</td>
                     <td className="text-right">
@@ -197,17 +334,20 @@ function StockTable({ label, items, isMgmt, vendors, onUpdate, onDelete }) {
               return (
                 <div key={`${item.category}#${item.item_id}`} className={`py-3 ${tone}`}>
                   <div className="flex justify-between">
-                    <div className="text-[14px] font-medium text-ink">{item.item_name}</div>
+                    <div className="text-[14px] font-medium text-ink">
+                      <ItemName item={item} />
+                      {item.sku && <span className="text-[10px] text-ink-muted ml-1.5">#{item.sku}</span>}
+                    </div>
                     {isMgmt && <button onClick={() => onDelete(item)} className="text-ink-muted text-[18px]">×</button>}
                   </div>
                   <div className="grid grid-cols-2 gap-2 mt-2">
                     <div>
-                      <div className="label">Stock</div>
+                      <div className="label">On hand</div>
                       <input className="input" type="number" defaultValue={item.current_stock}
                         onBlur={(e) => Number(e.target.value) !== item.current_stock && onUpdate(item, 'current_stock', Number(e.target.value))} />
                     </div>
                     <div>
-                      <div className="label">Par</div>
+                      <div className="label">Typical</div>
                       <input className="input" type="number" defaultValue={item.par_level} disabled={!isMgmt}
                         onBlur={(e) => Number(e.target.value) !== item.par_level && onUpdate(item, 'par_level', Number(e.target.value))} />
                     </div>
@@ -261,6 +401,7 @@ function VendorPanel({ vendorSummary }) {
 function AddItemForm({ propertyId, category, vendors, onAdded }) {
   const api = useApi()
   const [name, setName] = useState('')
+  const [sku, setSku] = useState('')
   const [par, setPar] = useState(0)
   const [unit, setUnit] = useState('each')
   const [vendor, setVendor] = useState('')
@@ -271,8 +412,8 @@ function AddItemForm({ propertyId, category, vendors, onAdded }) {
     if (!name.trim()) return
     setBusy(true)
     try {
-      await api.post(`/api/inventory/${propertyId}/items`, { category: cat, item_name: name, par_level: Number(par), unit, vendor })
-      setName(''); setPar(0); setVendor('')
+      await api.post(`/api/inventory/${propertyId}/items`, { category: cat, item_name: name, sku: sku.trim(), par_level: Number(par), unit, vendor })
+      setName(''); setSku(''); setPar(0); setVendor('')
       onAdded?.()
     } finally { setBusy(false) }
   }
@@ -280,18 +421,20 @@ function AddItemForm({ propertyId, category, vendors, onAdded }) {
   return (
     <div className="card bg-surface-subtle">
       <h3 className="section-title mb-3">Add inventory item</h3>
-      <div className="grid sm:grid-cols-[1fr,160px,100px,100px,160px,auto] gap-2">
+      <div className="grid sm:grid-cols-[1fr,140px,140px,90px,90px,150px,auto] gap-2">
         <input className="input" placeholder="Item name" value={name} onChange={(e) => setName(e.target.value)} />
+        <input className="input" placeholder="Sam's Club SKU" value={sku} onChange={(e) => setSku(e.target.value)} />
         <select className="select" value={cat} onChange={(e) => setCat(e.target.value)}>
           {INVENTORY_CATEGORIES.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
         </select>
-        <input className="input" placeholder="Par" type="number" value={par} onChange={(e) => setPar(e.target.value)} />
+        <input className="input" placeholder="Typical qty" type="number" value={par} onChange={(e) => setPar(e.target.value)} />
         <select className="select" value={unit} onChange={(e) => setUnit(e.target.value)}>
-          <option>each</option><option>box</option><option>case</option><option>bag</option>
+          <option>each</option><option>pack</option><option>box</option><option>case</option><option>bag</option><option>loaf</option>
         </select>
         <input className="input" list="inv-vendors-add" placeholder="Vendor" value={vendor} onChange={(e) => setVendor(e.target.value)} />
         <button className="btn-primary" disabled={busy} onClick={submit}>{busy ? '…' : 'Add'}</button>
       </div>
+      {name.trim() && <p className="text-[11px] text-ink-muted mt-2">Links to a Sam's Club search for “{name.trim()}”</p>}
       <datalist id="inv-vendors-add">
         {vendors.map((v) => <option key={v} value={v} />)}
       </datalist>
