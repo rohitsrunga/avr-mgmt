@@ -62,8 +62,9 @@ export const ROOM_EQUIPMENT_FIELDS = [
 // at sign-in by useFeatureConfig — these IDs only declare what's toggleable.
 // New sections that should also be toggleable: add them here AND in
 // backend/shared/settings.py:TOGGLEABLE_FEATURES.
+// Note: dinner orders is a Casco Bay-only program, gated by property in
+// Checklists.jsx — it is intentionally NOT a per-property toggle.
 export const TOGGLEABLE_FEATURES = [
-  'dinner',
   'business_case',
   'groups',
   'inspections',
@@ -71,7 +72,6 @@ export const TOGGLEABLE_FEATURES = [
 
 // Human-readable labels for the Admin feature toggle UI.
 export const FEATURE_LABELS = {
-  dinner:         'Dinner Orders',
   business_case:  'Business Case',
   groups:         'Group Contracts',
   inspections:    'Inspections',

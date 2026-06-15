@@ -15,7 +15,7 @@ from shared.auth import ALL_ROLES, authorize_property, get_identity
 from shared.dynamo import query_pk, table, to_dynamo
 from shared.response import bad_request, forbidden, not_found, ok, server_error
 from shared.router import Router, parse_body, query_params
-from shared.settings import VALID_PROPERTIES, is_feature_enabled
+from shared.settings import VALID_PROPERTIES
 
 router = Router()
 TBL = lambda: table("TABLE_DINNER_ORDERS")
@@ -23,14 +23,16 @@ TBL = lambda: table("TABLE_DINNER_ORDERS")
 VALID_SIDES = {"salad", "cookie", "chips", "mac_cheese"}
 VALID_SANDWICH = {"none", "chicken", "veggie"}
 VALID_DRINK = {"none", "water", "soda", "juice"}
-FEATURE_ID = "dinner"
+
+# Dinner orders is a Casco Bay-only program; it is not a per-property toggle.
+DINNER_PROPERTIES = ("casco_bay",)
 
 
 def _check_feature(pid):
     if pid not in VALID_PROPERTIES:
         return bad_request(f"unknown property: {pid}")
-    if not is_feature_enabled(pid, FEATURE_ID):
-        return forbidden("Dinner orders are disabled for this property")
+    if pid not in DINNER_PROPERTIES:
+        return forbidden("Dinner orders are not available for this property")
     return None
 
 

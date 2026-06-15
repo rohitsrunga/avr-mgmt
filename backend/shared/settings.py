@@ -22,8 +22,9 @@ VALID_PROPERTIES = ("casco_bay", "saco_bay")
 # Features owners can toggle per property. Sections always available to all
 # properties (shifts, inventory, rooms, housekeeping, admin) are deliberately
 # not listed here — they aren't user-toggleable.
+# Note: dinner orders is a Casco Bay-only program, gated by property in the
+# dinner_orders Lambda — it is intentionally NOT a per-property toggle.
 TOGGLEABLE_FEATURES = (
-    "dinner",
     "business_case",
     "groups",
     "inspections",

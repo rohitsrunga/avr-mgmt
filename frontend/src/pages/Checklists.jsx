@@ -10,17 +10,18 @@ import {
 } from '../config'
 import { useApi } from '../hooks/useApi'
 import { useAuth } from '../auth/AuthProvider'
-import { useFeatureConfig } from '../hooks/useFeatureConfig'
 import { useProperty } from '../hooks/useProperty'
+
+// Dinner orders is a Casco Bay-only program; it is not a per-property toggle.
+const DINNER_PROPERTIES = new Set(['casco_bay'])
 
 const MGMT = new Set(['owner', 'manager'])
 
 export default function Checklists() {
   const { user } = useAuth()
   const { propertyId, property } = useProperty()
-  const { isEnabled } = useFeatureConfig()
   const isMgmt = MGMT.has(user?.role)
-  const dinnerOn = isEnabled('dinner', propertyId)
+  const dinnerOn = DINNER_PROPERTIES.has(propertyId)
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [openShift, setOpenShift] = useState(null)
 
@@ -458,8 +459,7 @@ function TaskTemplateEditor({ propertyId, shiftId, onChange }) {
 
 function DinnerOrders({ propertyId, date }) {
   const api = useApi()
-  const { isEnabled } = useFeatureConfig()
-  const enabled = isEnabled('dinner', propertyId)
+  const enabled = DINNER_PROPERTIES.has(propertyId)
   const [orders, setOrders] = useState([])
   const [error, setError] = useState('')
 
@@ -488,7 +488,7 @@ function DinnerOrders({ propertyId, date }) {
   return (
     <SectionCard
       title="Dinner orders · tonight"
-      subtitle="Prep by 6:00 pm"
+      subtitle="Prep by 3:00 pm"
       actions={<span className="pill bg-brand-tint text-brand">{open} open / {orders.length}</span>}
       className="w-full min-w-0 lg:h-full flex flex-col min-h-0"
     >
