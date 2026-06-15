@@ -404,7 +404,7 @@ def public_list_items(event, params):
     out = [_serialize(it) for it in items if it.get("is_active", True)]
     # strip noisy fields not needed by the form
     public_fields = (
-        "item_id", "item_name", "category", "vendor", "unit",
+        "item_id", "item_name", "category", "vendor", "unit", "sku", "url",
         "current_stock", "par_level", "status", "suggested_order",
     )
     out = [{k: v for k, v in i.items() if k in public_fields} for i in out]

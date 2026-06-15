@@ -12,7 +12,7 @@
     <header class="brand">
       <div class="mark">A</div>
       <div class="meta">
-        <div class="name">Casco Bay Hotel</div>
+        <div class="name" id="property-name">Casco Bay Hotel</div>
         <div class="sub">AVR Hospitality · Stock Check</div>
       </div>
     </header>
@@ -64,19 +64,37 @@
     const overrides = {};   // key item_id → new qty
 
     const CATEGORY_LABELS = {
-      breakfast_food: 'Breakfast Food',
-      breakfast_beverage: 'Breakfast Beverage',
-      breakfast_supply: 'Breakfast Supplies',
+      breakfast_food: 'Food',
+      breakfast_beverage: 'Beverage',
+      breakfast_supply: 'Food Supplies',
       housekeeping: 'Housekeeping',
-      linen: 'Linen',
-      amenity: 'Amenities',
-      front_desk: 'Front Desk',
+    };
+
+    // Colloquial unit label, pluralized for the count (4 → "packs", 1 → "loaf").
+    const UNIT_PLURALS = { loaf: 'loaves', box: 'boxes', bunch: 'bunches' };
+    function unitLabel(unit, n) {
+      const u = !unit || unit === 'each' ? 'unit' : unit;
+      if (Number(n) === 1) return u;
+      return UNIT_PLURALS[u] || (u + 's');
+    }
+
+    const PROPERTY_NAMES = {
+      casco_bay: 'Casco Bay Hotel',
+      saco_bay:  'Saco Bay Hotel',
     };
 
     function getProperty() {
       const url = new URL(window.location.href);
-      return url.searchParams.get('p') || 'casco_bay';
+      const p = url.searchParams.get('p') || 'casco_bay';
+      return PROPERTY_NAMES[p] ? p : 'casco_bay';
     }
+
+    // Brand the header + tab title to the selected property.
+    (function applyBranding() {
+      const name = PROPERTY_NAMES[getProperty()];
+      document.getElementById('property-name').textContent = name;
+      document.title = `Stock Check · ${name}`;
+    })();
 
     function showError(msg) {
       const b = document.getElementById('banner-error');
@@ -118,7 +136,10 @@
     }
 
     function renderCategories() {
-      const cats = Array.from(new Set(allItems.map((i) => i.category)));
+      // Only the categories we surface here — legacy linen/amenity/front_desk
+      // rows may still exist in the data but are no longer counted.
+      const cats = Array.from(new Set(allItems.map((i) => i.category)))
+        .filter((c) => CATEGORY_LABELS[c]);
       const el = document.getElementById('categories');
       el.innerHTML = cats.map((c) => `
         <button type="button" class="option" data-category="${c}">
@@ -141,11 +162,16 @@
       list.innerHTML = items.map((it) => {
         const status = it.status || 'ok';
         const statusColor = status === 'critical' ? 'var(--danger)' : status === 'low' ? 'var(--warning)' : 'var(--ink-muted)';
+        // Only link out to a real Sam's Club URL (defensive — this is a public page).
+        const safeUrl = it.url && /^https:\/\/www\.samsclub\.com\//.test(it.url) ? it.url : '';
+        const nameHtml = safeUrl
+          ? `<a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer" style="font-weight: 500; font-size: 15px; color: var(--brand); text-decoration: none;">${escapeHtml(it.item_name)} ↗</a>`
+          : `<span style="font-weight: 500; font-size: 15px;">${escapeHtml(it.item_name)}</span>`;
         return `
           <div class="room" data-id="${it.item_id}" data-category="${it.category}">
             <div style="flex: 1; min-width: 0;">
-              <div style="font-weight: 500; font-size: 15px;">${escapeHtml(it.item_name)}</div>
-              <div class="notes">par ${it.par_level} ${escapeHtml(it.unit || '')} · <span style="color:${statusColor}">${status}</span></div>
+              <div>${nameHtml}</div>
+              <div class="notes">Typical: ${it.par_level} ${escapeHtml(unitLabel(it.unit, it.par_level))} · <span style="color:${statusColor}">${status}</span></div>
             </div>
             <input
               type="number"

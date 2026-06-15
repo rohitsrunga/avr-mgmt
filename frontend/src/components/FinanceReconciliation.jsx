@@ -122,74 +122,79 @@ export default function FinanceReconciliation({ propertyId }) {
             </div>
           )}
 
-          {/* Total bank posts by day */}
-          {postsByDay.length > 0 && (
-            <div>
-              <h3 className="section-title mb-2">
-                Bank posts by day
-                <span className="text-ink-muted font-normal"> · net deposited per payout date</span>
-              </h3>
-              <div className="overflow-auto max-h-64 rounded-lg border border-line-subtle">
-                <table className="table-clean text-[13px]">
-                  <thead className="sticky top-0 bg-white z-10">
-                    <tr>
-                      <th className="w-28">Date</th>
-                      <th className="w-20 text-right">Payouts</th>
-                      <th className="w-28 text-right">Gross</th>
-                      <th className="w-24 text-right">Fees</th>
-                      <th className="w-28 text-right">Net to bank</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {postsByDay.map((d) => (
-                      <tr key={d.date}>
-                        <td className="tabular-nums">{shortDate(d.date)}</td>
-                        <td className="tabular-nums text-right">{d.count}</td>
-                        <td className="tabular-nums text-right">{usdc(d.posted_gross)}</td>
-                        <td className="tabular-nums text-right text-ink-muted">{d.fees > 0 ? `−${usdc(d.fees)}` : usdc(0)}</td>
-                        <td className="tabular-nums text-right font-medium">{usdc(d.posted_net)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="sticky bottom-0 bg-white z-10">
-                    <tr className="font-medium border-t border-line">
-                      <td>Total</td>
-                      <td className="tabular-nums text-right">{postsByDay.reduce((a, d) => a + d.count, 0)}</td>
-                      <td className="tabular-nums text-right">{usdc(postsByDay.reduce((a, d) => a + d.posted_gross, 0))}</td>
-                      <td className="tabular-nums text-right text-ink-muted">{usdc(postsByDay.reduce((a, d) => a + d.fees, 0))}</td>
-                      <td className="tabular-nums text-right">{usdc(postsByDay.reduce((a, d) => a + d.posted_net, 0))}</td>
-                    </tr>
-                  </tfoot>
-                </table>
+          {/* Granular per-stay trace + bank posts by day, side by side */}
+          <div className={`grid gap-5 ${postsByDay.length > 0 ? 'lg:grid-cols-2' : ''} min-w-0`}>
+            {/* Granular per-stay money trace */}
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2 min-h-[28px]">
+                <h3 className="section-title !text-[14px]">
+                  Stays · {visible.length}{hideReconciled && reconciledCount > 0 ? ` of ${stays.length}` : ''}
+                  <span className="text-ink-muted font-normal"> · booked → collected → posted per guest</span>
+                </h3>
+                {reconciledCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setHideReconciled((v) => !v)}
+                    className={`text-[12px] font-medium px-2.5 py-1 rounded-full border transition-colors ${
+                      hideReconciled
+                        ? 'bg-brand-tint border-brand text-brand'
+                        : 'bg-white border-line text-ink-body hover:border-ink-muted'
+                    }`}
+                  >
+                    {hideReconciled ? `Reconciled hidden · show all` : `Hide ${reconciledCount} reconciled`}
+                  </button>
+                )}
               </div>
-            </div>
-          )}
-
-          {/* Granular per-stay money trace */}
-          <div>
-            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-              <h3 className="section-title">
-                Stays · {visible.length}{hideReconciled && reconciledCount > 0 ? ` of ${stays.length}` : ''}
-                <span className="text-ink-muted font-normal"> · booked → authorized/collected → posted per guest</span>
-              </h3>
-              {reconciledCount > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setHideReconciled((v) => !v)}
-                  className={`text-[12px] font-medium px-2.5 py-1 rounded-full border transition-colors ${
-                    hideReconciled
-                      ? 'bg-brand-tint border-brand text-brand'
-                      : 'bg-white border-line text-ink-body hover:border-ink-muted'
-                  }`}
-                >
-                  {hideReconciled ? `Reconciled hidden · show all` : `Hide ${reconciledCount} reconciled`}
-                </button>
+              {visible.length === 0 ? (
+                <div className="text-[13px] text-ink-muted py-6 text-center">No stays in range.</div>
+              ) : (
+                <StayTable stays={visible} />
               )}
             </div>
-            {visible.length === 0 ? (
-              <div className="text-[13px] text-ink-muted py-6 text-center">No stays in range.</div>
-            ) : (
-              <StayTable stays={visible} />
+
+            {/* Total bank posts by day */}
+            {postsByDay.length > 0 && (
+              <div className="min-w-0">
+                <div className="mb-2 min-h-[28px] flex items-center">
+                  <h3 className="section-title !text-[14px]">
+                    Bank posts by day
+                    <span className="text-ink-muted font-normal"> · net deposited per payout date</span>
+                  </h3>
+                </div>
+                <div className="overflow-auto max-h-[28rem] rounded-lg border border-line-subtle">
+                  <table className="table-clean text-[12px]">
+                    <thead className="sticky top-0 bg-white z-10">
+                      <tr>
+                        <th className="w-28">Date</th>
+                        <th className="w-20 text-right">Payouts</th>
+                        <th className="w-28 text-right">Gross</th>
+                        <th className="w-24 text-right">Fees</th>
+                        <th className="w-28 text-right">Net to bank</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {postsByDay.map((d) => (
+                        <tr key={d.date}>
+                          <td className="tabular-nums">{shortDate(d.date)}</td>
+                          <td className="tabular-nums text-right">{d.count}</td>
+                          <td className="tabular-nums text-right">{usdc(d.posted_gross)}</td>
+                          <td className="tabular-nums text-right text-ink-muted">{d.fees > 0 ? `−${usdc(d.fees)}` : usdc(0)}</td>
+                          <td className="tabular-nums text-right font-medium">{usdc(d.posted_net)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="sticky bottom-0 bg-white z-10">
+                      <tr className="font-medium border-t border-line">
+                        <td>Total</td>
+                        <td className="tabular-nums text-right">{postsByDay.reduce((a, d) => a + d.count, 0)}</td>
+                        <td className="tabular-nums text-right">{usdc(postsByDay.reduce((a, d) => a + d.posted_gross, 0))}</td>
+                        <td className="tabular-nums text-right text-ink-muted">{usdc(postsByDay.reduce((a, d) => a + d.fees, 0))}</td>
+                        <td className="tabular-nums text-right">{usdc(postsByDay.reduce((a, d) => a + d.posted_net, 0))}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
             )}
           </div>
 
@@ -202,7 +207,7 @@ export default function FinanceReconciliation({ propertyId }) {
               </button>
               {showExceptions && (
                 <div className="mt-2 overflow-x-auto">
-                  <table className="table-clean text-[13px]">
+                  <table className="table-clean text-[12px]">
                     <thead><tr><th>Reservation</th><th className="w-28">Payout date</th><th className="w-28 text-right">Gross</th><th className="w-28 text-right">Net to bank</th></tr></thead>
                     <tbody>
                       {exceptions.map((e) => (
@@ -250,17 +255,17 @@ function statusOf(s) {
 
 function StayTable({ stays }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="table-clean text-[13px]">
-        <thead>
+    <div className="overflow-auto max-h-[28rem] rounded-lg border border-line-subtle">
+      <table className="table-clean text-[12px]">
+        <thead className="sticky top-0 bg-white z-10">
           <tr>
             <th>Guest</th>
-            <th className="w-28">Reservation</th>
-            <th className="w-24 text-right">Booked</th>
-            <th className="w-32 text-right">Authorized / Collected</th>
-            <th className="w-20 text-right">Fees</th>
-            <th className="w-24 text-right">Posted</th>
-            <th className="w-40">Status</th>
+            <th className="w-24">Reservation</th>
+            <th className="w-20 text-right">Booked</th>
+            <th className="w-24 text-right">Authorized / Collected</th>
+            <th className="w-16 text-right">Fees</th>
+            <th className="w-20 text-right">Posted</th>
+            <th className="w-28">Status</th>
           </tr>
         </thead>
         <tbody>

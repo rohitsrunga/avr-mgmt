@@ -58,13 +58,21 @@ export default function Marketing() {
         {groupsOn && <button onClick={() => setCreating(true)} className="btn-primary">+ New contract</button>}
       </div>
 
-      {canSeeFinance && <FinanceReconciliation propertyId={propertyId} />}
+      {canSeeFinance && (
+        <section className="space-y-3">
+          <h2 className="text-[16px] font-semibold text-ink tracking-tight">Finance</h2>
+          <FinanceReconciliation propertyId={propertyId} />
+        </section>
+      )}
 
-      {inquiryUrl && <CopyLink url={inquiryUrl} label="Public group-inquiry form" />}
+      <section className="space-y-3">
+        <h2 className="text-[16px] font-semibold text-ink tracking-tight">Marketing</h2>
 
-      {error && <Banner tone="error">{error}</Banner>}
+        {inquiryUrl && <CopyLink url={inquiryUrl} label="Public group-inquiry form" />}
 
-      <div className={selected ? 'grid lg:grid-cols-3 gap-5' : ''}>
+        {error && <Banner tone="error">{error}</Banner>}
+
+        <div className={selected ? 'grid lg:grid-cols-3 gap-5' : ''}>
         <div className={selected ? 'lg:col-span-2 space-y-4' : 'space-y-4'}>
           {groupsOn && (
             <SectionCard
@@ -143,7 +151,8 @@ export default function Marketing() {
             </SectionCard>
           </div>
         )}
-      </div>
+        </div>
+      </section>
 
       {creating && groupsOn && (
         <ContractFormModal propertyId={propertyId} onClose={() => setCreating(false)} onSaved={() => { setCreating(false); load() }} />

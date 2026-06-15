@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Cloudbeds OAuth — Code Capture</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="stylesheet" href="styles.css" />
+<style>
+  body { display:grid; place-items:center; min-height:100vh; padding:24px; background:#f5f5f7; font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif; }
+  .card { background:#fff; border:1px solid #e5e5ea; border-radius:14px; max-width:560px; width:100%; padding:28px; box-shadow:0 1px 2px rgba(0,0,0,.04); }
+  h1 { font-size:22px; margin:0 0 6px; letter-spacing:-0.02em; }
+  p { color:#6e6e73; font-size:14px; line-height:1.5; margin:0 0 16px; }
+  .label { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.08em; color:#6e6e73; margin-bottom:6px; }
+  .code-box { background:#f5f5f7; border:1px solid #e5e5ea; border-radius:10px; padding:14px; font-family:"SF Mono",Menlo,monospace; font-size:13px; word-break:break-all; line-height:1.5; }
+  .err { background:#fdecec; border-color:#bf2c2c33; color:#bf2c2c; }
+  button { background:#0071e3; color:#fff; border:none; border-radius:8px; padding:10px 16px; font-size:14px; font-weight:500; cursor:pointer; margin-top:14px; }
+  button:hover { background:#0077ed; }
+  .ok { background:#1d8a4b; }
+  .ok:hover { background:#1f9c52; }
+  .meta { font-size:12px; color:#86868b; margin-top:18px; padding-top:14px; border-top:1px solid #e5e5ea; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Cloudbeds OAuth · code captured</h1>
+    <p id="lede">Copy the code below and paste it into the running <code>cloudbeds_oauth_setup.py</code> terminal.</p>
+
+    <div class="label" id="codeLabel">Authorization code</div>
+    <div class="code-box" id="code">—</div>
+    <button id="copyBtn">Copy code</button>
+
+    <div class="meta">
+      State: <code id="state">—</code><br>
+      This page only reads URL parameters in your browser. Nothing is sent anywhere.
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code') || '';
+    const err  = params.get('error') || '';
+    const errDesc = params.get('error_description') || '';
+    const state = params.get('state') || '';
+
+    const codeEl = document.getElementById('code');
+    const lede = document.getElementById('lede');
+    const label = document.getElementById('codeLabel');
+    const stateEl = document.getElementById('state');
+    const btn = document.getElementById('copyBtn');
+
+    stateEl.textContent = state || '(none)';
+
+    if (err) {
+      codeEl.textContent = err + (errDesc ? ' — ' + errDesc : '');
+      codeEl.classList.add('err');
+      label.textContent = 'OAuth error';
+      lede.textContent = 'Cloudbeds returned an error instead of an authorization code. Check your client_id, scope, and redirect URI registration.';
+      btn.style.display = 'none';
+      return;
+    }
+    if (!code) {
+      codeEl.textContent = 'No code in URL. Open this page via the Cloudbeds OAuth redirect, not directly.';
+      codeEl.classList.add('err');
+      btn.style.display = 'none';
+      return;
+    }
+
+    codeEl.textContent = code;
+
+    btn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(code);
+        btn.textContent = 'Copied ✓';
+        btn.classList.add('ok');
+        setTimeout(() => { btn.textContent = 'Copy code'; btn.classList.remove('ok'); }, 1600);
+      } catch {
+        btn.textContent = 'Press Cmd+C to copy';
+      }
+    });
+  })();
+  </script>
+</body>
+</html>
