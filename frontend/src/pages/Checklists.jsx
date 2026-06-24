@@ -3,6 +3,7 @@ import Banner from '../components/Banner'
 import CopyLink from '../components/CopyLink'
 import ProgressBar from '../components/ProgressBar'
 import SectionCard from '../components/SectionCard'
+import NotesAndIssues from '../components/NotesAndIssues'
 import {
   CONFIG,
   DINNER_MENU,
@@ -30,13 +31,10 @@ export default function Checklists() {
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex-1">
           <h1 className="page-title">Front Desk</h1>
-          <p className="page-subtitle">{property?.name} · current shift checklist{dinnerOn ? ', dinner orders' : ''} and Park &amp; Fly. Resets at midnight.</p>
+          <p className="page-subtitle">{property?.name} · current shift checklist{dinnerOn ? ', dinner orders' : ''} and notes. Resets at midnight.</p>
         </div>
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input max-w-[180px]" />
       </div>
-
-      {/* Occupancy BANs are sourced from Cloudbeds, which only Saco Bay uses. */}
-      {propertyId === 'saco_bay' && <OccupancyBANs propertyId={propertyId} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 lg:items-stretch">
         <div className="lg:col-span-2 min-w-0 min-h-0">
@@ -44,12 +42,12 @@ export default function Checklists() {
         </div>
         <div className="flex flex-col gap-5 min-w-0 min-h-0">
           {dinnerOn && (
-            <div className="min-w-0 lg:flex-1 min-h-0 lg:flex">
+            <div className="min-w-0 lg:flex min-h-0">
               <DinnerOrders propertyId={propertyId} date={date} />
             </div>
           )}
           <div className="min-w-0 lg:flex-1 min-h-0 lg:flex">
-            <ParkFlyPanel propertyId={propertyId} />
+            <NotesAndIssues propertyId={propertyId} />
           </div>
         </div>
       </div>
@@ -65,93 +63,6 @@ export default function Checklists() {
       )}
     </div>
   )
-}
-
-function OccupancyBANs({ propertyId }) {
-  const api = useApi()
-  const [data, setData] = useState(null)
-  const [loaded, setLoaded] = useState(false)
-  const [syncing, setSyncing] = useState(false)
-
-  async function load() {
-    try {
-      const res = await api.get(`/api/reports/${propertyId}/today`)
-      setData(res); setLoaded(true)
-    } catch {
-      setData(null); setLoaded(true)
-    }
-  }
-
-  useEffect(() => {
-    let cancelled = false
-    setLoaded(false)
-    api.get(`/api/reports/${propertyId}/today`)
-      .then((res) => { if (!cancelled) { setData(res); setLoaded(true) } })
-      .catch(() => { if (!cancelled) { setData(null); setLoaded(true) } })
-    return () => { cancelled = true }
-  }, [propertyId]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function refreshCloudbeds() {
-    setSyncing(true)
-    try {
-      await api.post('/api/sync/cloudbeds', {})
-      await load()
-    } catch {
-      /* leave the existing data on screen */
-    } finally {
-      setSyncing(false)
-    }
-  }
-
-  const stale = data?.synced_at && (Date.now() - new Date(data.synced_at).getTime() > 12 * 3600 * 1000)
-  const noData = loaded && (!data || !data.synced_at)
-  const hint = noData
-    ? 'Cloudbeds not connected'
-    : stale
-      ? `synced ${timeAgo(data.synced_at)}`
-      : data?.synced_at ? `synced ${timeAgo(data.synced_at)}` : ''
-
-  return (
-    <div className="space-y-2">
-      <div className="grid grid-cols-3 gap-3 sm:gap-4">
-        <BAN label="Arrivals"   value={noData ? '—' : data?.arrivals}   hint={hint} />
-        <BAN label="In house"   value={noData ? '—' : data?.in_house}   hint={hint} />
-        <BAN label="Departures" value={noData ? '—' : data?.departures} hint={hint} />
-      </div>
-      <div className="text-right">
-        <button
-          type="button"
-          onClick={refreshCloudbeds}
-          disabled={syncing}
-          className="text-[12px] font-medium text-brand hover:text-brand-strong disabled:text-ink-muted disabled:cursor-wait"
-          title="Pull the latest Cloudbeds snapshot"
-        >
-          {syncing ? 'Syncing…' : 'Refresh Cloudbeds'}
-        </button>
-      </div>
-    </div>
-  )
-}
-
-function BAN({ label, value, hint }) {
-  return (
-    <div className="card">
-      <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-muted">{label}</div>
-      <div className="text-[32px] font-semibold tracking-tight tabular-nums mt-1 text-ink">{value ?? '—'}</div>
-      {hint && <div className="text-[11px] text-ink-muted mt-0.5 truncate">{hint}</div>}
-    </div>
-  )
-}
-
-function timeAgo(iso) {
-  if (!iso) return ''
-  const diffMs = Date.now() - new Date(iso).getTime()
-  const mins = Math.round(diffMs / 60000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
-  const hrs = Math.round(mins / 60)
-  if (hrs < 24) return `${hrs}h ago`
-  return `${Math.round(hrs / 24)}d ago`
 }
 
 // Which shift is "live" given the local clock: 1st 7a–3p, 2nd 3p–11p,
@@ -490,7 +401,7 @@ function DinnerOrders({ propertyId, date }) {
       title="Dinner orders · tonight"
       subtitle="Prep by 3:00 pm"
       actions={<span className="pill bg-brand-tint text-brand">{open} open / {orders.length}</span>}
-      className="w-full min-w-0 lg:h-full flex flex-col min-h-0"
+      className="w-full min-w-0 lg:max-h-[360px] flex flex-col min-h-0"
     >
       {error && <Banner tone="error">{error}</Banner>}
       {formUrl && <div className="mb-3"><CopyLink url={formUrl} label="Guest order form" /></div>}
@@ -546,98 +457,4 @@ function DinnerOrders({ propertyId, date }) {
   )
 }
 
-function ParkFlyPanel({ propertyId }) {
-  const api = useApi()
-  const [vehicles, setVehicles] = useState([])
-  const [showForm, setShowForm] = useState(false)
-  const [error, setError] = useState('')
-
-  async function load() {
-    try {
-      setError('')
-      const res = await api.get(`/api/parkfly/${propertyId}`).catch(() => ({ vehicles: [] }))
-      setVehicles(res.vehicles || [])
-    } catch (e) { setError(e.message) }
-  }
-  useEffect(() => { load() /* eslint-disable-next-line */ }, [propertyId])
-
-  async function update(v, patch) {
-    try { await api.put(`/api/parkfly/${propertyId}/${v.vehicle_id}`, patch); load() } catch (e) { setError(e.message) }
-  }
-
-  const unpaid = vehicles.filter((v) => !v.paid).length
-
-  return (
-    <SectionCard
-      title="Park & Fly"
-      actions={
-        <div className="flex items-center gap-2">
-          {unpaid > 0 && <span className="text-[11px] text-warning">{unpaid} unpaid</span>}
-          <button onClick={() => setShowForm((s) => !s)} className="text-[12px] text-brand font-semibold">{showForm ? 'Cancel' : '+ New'}</button>
-        </div>
-      }
-      className="w-full min-w-0 lg:h-full flex flex-col min-h-0"
-    >
-      {error && <Banner tone="error">{error}</Banner>}
-      {showForm && <NewVehicleForm propertyId={propertyId} onCreated={() => { setShowForm(false); load() }} />}
-      {vehicles.length === 0 ? (
-        <div className="text-[13px] text-ink-muted py-6 text-center">No active tags.</div>
-      ) : (
-        <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto space-y-2 text-[12px]">
-          {vehicles.map((v) => (
-            <div key={v.vehicle_id} className="flex items-center justify-between border-b border-line-subtle pb-2 last:border-b-0">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-brand font-semibold">#{v.tag_number}</span>
-                  <span className={`pill ${v.paid ? 'bg-positive-tint text-positive' : 'bg-warning-tint text-warning'}`}>{v.paid ? 'Paid' : 'Unpaid'}</span>
-                </div>
-                <div className="text-[11px] text-ink-muted truncate">{v.guest_name} · {v.vehicle_make_model} · out {v.check_out}</div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="tabular-nums text-ink-body">${(v.total_fee || 0).toFixed(0)}</span>
-                {!v.paid && (
-                  <button onClick={() => update(v, { paid: true })} className="text-[10px] text-brand font-semibold">Mark paid</button>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </SectionCard>
-  )
-}
-
-function NewVehicleForm({ propertyId, onCreated }) {
-  const api = useApi()
-  const today = new Date().toISOString().slice(0, 10)
-  const [form, setForm] = useState({ guest_name: '', phone: '', check_in: today, check_out: today, vehicle_make_model: '', license_plate: '' })
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState('')
-
-  function set(k) { return (e) => setForm((f) => ({ ...f, [k]: e.target.value })) }
-
-  async function submit(e) {
-    e.preventDefault()
-    setBusy(true); setErr('')
-    try {
-      await api.post(`/api/parkfly/${propertyId}`, form)
-      onCreated?.()
-    } catch (e) { setErr(e.message) } finally { setBusy(false) }
-  }
-
-  return (
-    <form onSubmit={submit} className="border border-line-subtle bg-surface-subtle rounded-lg p-3 mb-3 space-y-2">
-      <div className="grid grid-cols-2 gap-2">
-        <input className="input" placeholder="Guest" required value={form.guest_name} onChange={set('guest_name')} />
-        <input className="input" placeholder="Phone" value={form.phone} onChange={set('phone')} />
-        <input type="date" className="input" required value={form.check_in} onChange={set('check_in')} />
-        <input type="date" className="input" required value={form.check_out} onChange={set('check_out')} />
-        <input className="input" placeholder="Make / model" required value={form.vehicle_make_model} onChange={set('vehicle_make_model')} />
-        <input className="input" placeholder="Plate" required value={form.license_plate} onChange={set('license_plate')} />
-      </div>
-      {err && <div className="text-danger text-[12px]">{err}</div>}
-      <button className="btn-primary w-full" disabled={busy}>{busy ? 'Saving…' : 'Issue tag'}</button>
-    </form>
-  )
-}
 

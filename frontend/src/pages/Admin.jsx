@@ -2,13 +2,11 @@ import { useEffect, useState } from 'react'
 import Banner from '../components/Banner'
 import EmployeeAdmin from '../components/EmployeeAdmin'
 import SectionCard from '../components/SectionCard'
-import { FEATURE_LABELS, PROPERTIES as APP_PROPERTIES, ROLES } from '../config'
+import { ROLES } from '../config'
 import { useApi } from '../hooks/useApi'
-import { useFeatureConfig } from '../hooks/useFeatureConfig'
 import { useProperty } from '../hooks/useProperty'
 
 const PROPERTIES = ['casco_bay', 'saco_bay', 'both']
-const PROPERTY_LABEL = Object.fromEntries(APP_PROPERTIES.map((p) => [p.id, p.short]))
 
 export default function Admin() {
   const api = useApi()
@@ -146,9 +144,6 @@ export default function Admin() {
       </div>
 
       <hr className="border-line-subtle my-6" />
-      <FeatureToggles />
-
-      <hr className="border-line-subtle my-6" />
       <RosterManager />
 
       <hr className="border-line-subtle my-6" />
@@ -267,91 +262,6 @@ function RosterPanel({ title, listPath, listKey, idKey, itemPath, listQuery }) {
         </ul>
       )}
     </div>
-  )
-}
-
-function FeatureToggles() {
-  const { properties, features, config, setEnabled, reload, error: configError } = useFeatureConfig()
-  const [busy, setBusy] = useState('')
-  const [error, setError] = useState('')
-  const [saved, setSaved] = useState('')
-
-  useEffect(() => { setError(configError || '') }, [configError])
-
-  async function toggle(propertyId, featureId) {
-    const current = new Set(config[propertyId] || [])
-    if (current.has(featureId)) current.delete(featureId)
-    else current.add(featureId)
-    setBusy(`${propertyId}#${featureId}`)
-    setError('')
-    try {
-      await setEnabled(propertyId, Array.from(current))
-      setSaved(`${propertyId}#${featureId}`)
-      setTimeout(() => setSaved(''), 1200)
-    } catch (e) {
-      setError(e.message)
-      reload()
-    } finally {
-      setBusy('')
-    }
-  }
-
-  return (
-    <SectionCard
-      title="Property features"
-      subtitle="Owner-only. Toggle which sections are visible for each property. Changes take effect after the next page load."
-    >
-      {error && <Banner tone="error">{error}</Banner>}
-      <div className="overflow-x-auto">
-        <table className="table-clean">
-          <thead>
-            <tr>
-              <th>Feature</th>
-              {properties.map((pid) => (
-                <th key={pid} className="text-center w-36">{PROPERTY_LABEL[pid] || pid}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {features.map((fid) => (
-              <tr key={fid}>
-                <td className="text-ink">{FEATURE_LABELS[fid] || fid}</td>
-                {properties.map((pid) => {
-                  const enabled = (config[pid] || []).includes(fid)
-                  const isBusy = busy === `${pid}#${fid}`
-                  const justSaved = saved === `${pid}#${fid}`
-                  return (
-                    <td key={pid} className="text-center">
-                      <button
-                        type="button"
-                        disabled={isBusy}
-                        onClick={() => toggle(pid, fid)}
-                        title={enabled ? 'Disable' : 'Enable'}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                          enabled ? 'bg-brand' : 'bg-surface-sunken'
-                        } ${isBusy ? 'opacity-60 cursor-wait' : 'cursor-pointer'}`}
-                      >
-                        <span
-                          className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-card transition-transform ${
-                            enabled ? 'translate-x-5' : 'translate-x-0.5'
-                          }`}
-                        />
-                        {justSaved && (
-                          <span className="absolute -right-7 top-1/2 -translate-y-1/2 text-[11px] text-positive">Saved</span>
-                        )}
-                      </button>
-                    </td>
-                  )
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="text-[12px] text-ink-muted mt-3">
-        Disabling a feature hides the tab and rejects submissions to that property's public form. Defaults: every feature enabled in every property.
-      </p>
-    </SectionCard>
   )
 }
 

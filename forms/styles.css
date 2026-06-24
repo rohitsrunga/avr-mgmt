@@ -406,6 +406,33 @@ button.btn.block {
   font-size: 14px;
 }
 
+/* Shared notepad widget (housekeeping + inspection public forms) */
+.note-add { display: flex; gap: 10px; align-items: center; }
+.note-add input { flex: 1; }
+.note-add button.btn { width: auto; flex-shrink: 0; padding: 12px 20px; }
+.note-list { margin-top: 16px; display: flex; flex-direction: column; gap: 10px; }
+.note-row {
+  background: var(--surface-subtle, #fafafa);
+  border: 1px solid var(--line-subtle);
+  border-radius: 12px;
+  padding: 11px 14px;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--ink);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.note-row .note-author { font-weight: 600; color: var(--ink); margin-right: 4px; }
+.note-empty {
+  color: var(--ink-muted);
+  font-size: 14px;
+  text-align: center;
+  padding: 16px 0;
+  border: 1px dashed var(--line-subtle);
+  border-radius: 12px;
+}
+.note-meta { color: var(--ink-faint); font-size: 12px; margin-top: 14px; }
+
 .hidden { display: none !important; }
 
 footer.foot {

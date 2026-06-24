@@ -52,6 +52,18 @@
         <div id="room-list" class="room-list"></div>
         <div id="empty" class="muted hidden" style="text-align:center;padding:24px 0;">No rooms assigned yet.</div>
       </div>
+
+      <!-- Shared notes — visible to front desk, housekeeping & managers -->
+      <div class="card">
+        <h2 class="section-title">Notes</h2>
+        <p class="muted">Shared with the front desk, managers, and other staff.</p>
+        <div class="note-add" style="margin-top:12px;">
+          <input id="note-input" type="text" maxlength="280" placeholder="Add a note…" />
+          <button class="btn primary" id="note-add">Add</button>
+        </div>
+        <div id="note-list" class="note-list"></div>
+        <div id="note-meta" class="note-meta"></div>
+      </div>
     </div>
 
     <footer class="foot">AVR Hospitality Management</footer>
@@ -139,7 +151,56 @@
       document.getElementById('who').textContent = name;
       document.getElementById('pick').classList.add('hidden');
       document.getElementById('rooms').classList.remove('hidden');
+      setupNotes();
       await refreshAssignments();
+    }
+
+    // Shared property notepad — read + append. Append-only from the form.
+    let notesReady = false;
+    function setupNotes() {
+      const list = document.getElementById('note-list');
+      const meta = document.getElementById('note-meta');
+      const input = document.getElementById('note-input');
+      const addBtn = document.getElementById('note-add');
+
+      function render(data) {
+        const lines = (data.notes || '').split('\n').filter((l) => l.trim() !== '');
+        list.innerHTML = lines.length === 0
+          ? '<div class="note-empty">No notes yet.</div>'
+          : lines.map((l) => `<div class="note-row">${formatNoteLine(l)}</div>`).join('');
+        meta.textContent = data.updated_at
+          ? `Updated ${new Date(data.updated_at).toLocaleString()}${data.updated_by ? ' · ' + data.updated_by : ''}`
+          : '';
+      }
+      async function load() {
+        try {
+          const res = await fetch(`${window.__API_BASE}/api/public/housekeeping/${PROPERTY}/shared-notes`);
+          if (res.ok) render(await res.json());
+        } catch (e) { /* leave as-is */ }
+      }
+      async function add() {
+        const note = input.value.trim();
+        if (!note) return;
+        addBtn.disabled = true;
+        try {
+          const res = await fetch(`${window.__API_BASE}/api/public/housekeeping/${PROPERTY}/shared-notes`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ note, author: currentHousekeeper ? currentHousekeeper.name : '' }),
+          });
+          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Could not add note'); }
+          input.value = '';
+          render(await res.json());
+        } catch (e) { showError(e.message); }
+        finally { addBtn.disabled = false; }
+      }
+
+      if (!notesReady) {
+        addBtn.addEventListener('click', add);
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+        notesReady = true;
+      }
+      load();
     }
 
     async function refreshAssignments() {
@@ -215,6 +276,14 @@
       return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
       );
+    }
+
+    // Lines from the public forms are stored as "Author: note" — show the
+    // author in bold. Dashboard lines without that shape render plain.
+    function formatNoteLine(line) {
+      const m = line.match(/^([^:]{1,40}):\s+([\s\S]+)$/);
+      if (m) return `<span class="note-author">${escapeHtml(m[1])}</span>${escapeHtml(m[2])}`;
+      return escapeHtml(line);
     }
 
     loadRoster();

@@ -1,0 +1,1125 @@
+{
+  "_about": "Hand-maintained payment-calendar obligations. Each obligation declares WHEN a recurring payment is expected per hotel and which account funds it; scripts/estimate_payment_calendar.py fills in the AMOUNT from the prior-year actual in the closest week (data/vendor_histories.json) and writes rows to the avr-finance table that the Finance > Payment Calendar tab renders. Edit freely and re-run the script. 'schedule' is one of {\"monthly\":{\"day\":N}}, {\"weekly\":{\"weekday\":\"Fri\"}}, {\"dates\":[\"MM-DD\",...]}; optional \"months\":[1,4,7,10] restricts to those months; optional \"amount\":N overrides the estimate; \"source\" lists the vendor name(s) in vendor_histories.json to read amounts from (default: the obligation 'vendor'). 'dept' is used only when 'line' is not a standard USALI line.",
+  "settings": {
+    "forward_months": 18,
+    "tolerance_days": 21
+  },
+  "obligations": [
+    {
+      "line": "Repairs & Maintenance",
+      "dept": "Property Ops & Maint",
+      "vendor": "AAA Energy Service Co",
+      "label": "Heating fuel",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Capital One",
+          "source": [
+            "AAA Energy Service Co"
+          ],
+          "schedule": {
+            "dates": [
+              "02-13",
+              "02-21",
+              "05-15",
+              "07-28",
+              "08-07",
+              "10-28",
+              "12-28"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "line": "Telephone",
+      "dept": "Utilities",
+      "vendor": "AT&T",
+      "label": "Phone",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Biddeford - 5109",
+          "source": [
+            "AT&T"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 6
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Rent & Lease",
+      "dept": "Fixed Charges",
+      "vendor": "Alliance Laundry",
+      "label": "Equipment / vehicle lease",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Biddeford - 5109",
+          "source": [
+            "Alliance Laundry"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 22
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Insurance",
+      "dept": "Fixed Charges",
+      "vendor": "Anthem",
+      "label": "Health insurance",
+      "hotels": {
+        "Saco Bay": {
+          "fund": "BOA - 0585",
+          "source": [
+            "Anthem"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 8
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Rent & Lease",
+      "dept": "Fixed Charges",
+      "vendor": "Ascentium Capital",
+      "label": "Equipment / vehicle lease",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "BOA - 0463",
+          "source": [
+            "Ascentium Capital"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 5
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Professional Services",
+      "dept": "A&G",
+      "vendor": "BFN Corp",
+      "label": "Professional services",
+      "hotels": {
+        "Saco Bay": {
+          "fund": "Chase - 2989",
+          "source": [
+            "BFN Corp"
+          ],
+          "schedule": {
+            "dates": [
+              "04-17",
+              "06-19",
+              "07-24",
+              "10-23"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "line": "Rent & Lease",
+      "dept": "Fixed Charges",
+      "vendor": "BMW Financial",
+      "label": "Equipment / vehicle lease",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "BOA - 0463",
+          "source": [
+            "BMW Financial"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 20
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Credit Card Fees",
+      "dept": "A&G",
+      "vendor": "Bank of America",
+      "label": "Bank fees",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "BOA - 0463",
+          "source": [
+            "Bank of America"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Commission Expense",
+      "dept": "Rooms (OTA)",
+      "vendor": "Booking.com",
+      "label": "OTA commission",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Biddeford - 5109",
+          "source": [
+            "Booking.com"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 24
+            }
+          }
+        },
+        "Saco Bay": {
+          "fund": "BOA - 0585",
+          "source": [
+            "Booking.com"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 21
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Rent & Lease",
+      "dept": "Fixed Charges",
+      "vendor": "Boulos Asset Management",
+      "label": "Property management",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Biddeford - 5109",
+          "source": [
+            "Boulos Asset Management"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 29
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Electricity",
+      "dept": "Utilities",
+      "vendor": "Central Maine Power",
+      "label": "Electricity",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Biddeford - 5109",
+          "source": [
+            "Central Maine Power"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 24
+            }
+          }
+        },
+        "Saco Bay": {
+          "fund": "BOA - 0585",
+          "source": [
+            "CMP"
+          ],
+          "schedule": {
+            "weekly": {
+              "weekday": "Tue"
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Franchise & Royalty Fees",
+      "dept": "Sales & Marketing",
+      "vendor": "Choice Hotels International",
+      "label": "Franchise royalty",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Biddeford - 5109",
+          "source": [
+            "Choice Hotels International"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Property Taxes",
+      "dept": "Fixed Charges",
+      "vendor": "City of Saco",
+      "label": "Real estate tax",
+      "hotels": {
+        "Saco Bay": {
+          "fund": "BOA - 0585",
+          "source": [
+            "City of Saco"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 14
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Property Taxes",
+      "dept": "Fixed Charges",
+      "vendor": "City of South Portland",
+      "label": "Real estate tax",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Biddeford - 5109",
+          "source": [
+            "City of South Portland"
+          ],
+          "schedule": {
+            "dates": [
+              "02-21",
+              "06-25",
+              "08-07",
+              "10-29",
+              "12-11"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "line": "Insurance",
+      "dept": "Fixed Charges",
+      "vendor": "Concord Group",
+      "label": "Property insurance",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Biddeford - 5109",
+          "source": [
+            "Concord Group"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 5
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Telephone",
+      "dept": "Utilities",
+      "vendor": "Consolidated Communications",
+      "label": "Phone",
+      "hotels": {
+        "Saco Bay": {
+          "fund": "Chase - 2989",
+          "source": [
+            "Consolidated Communications"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 27
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Hotel Supplies",
+      "dept": "Rooms",
+      "vendor": "Courtesy Products",
+      "label": "In-room amenities",
+      "hotels": {
+        "Saco Bay": {
+          "fund": "Amex - 12009",
+          "source": [
+            "Courtesy Products"
+          ],
+          "schedule": {
+            "dates": [
+              "03-24",
+              "07-02",
+              "07-31",
+              "09-25",
+              "12-02",
+              "12-29"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "line": "Direct TV",
+      "dept": "Utilities",
+      "vendor": "DirecTV",
+      "label": "TV",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Capital One",
+          "source": [
+            "DirecTV"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 20
+            }
+          }
+        },
+        "Saco Bay": {
+          "fund": "Amex - 12009",
+          "source": [
+            "DirecTV"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 20
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Repairs & Maintenance",
+      "dept": "Property Ops & Maint",
+      "vendor": "EcoLab",
+      "label": "Cleaning chemicals",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Capital One",
+          "source": [
+            "EcoLab"
+          ],
+          "schedule": {
+            "dates": [
+              "02-13",
+              "04-23",
+              "05-30",
+              "07-17",
+              "08-25",
+              "10-27",
+              "12-19"
+            ]
+          }
+        },
+        "Saco Bay": {
+          "fund": "Amex - 12009",
+          "source": [
+            "Ecolab Inc"
+          ],
+          "schedule": {
+            "dates": [
+              "04-23",
+              "05-29",
+              "07-23",
+              "08-25",
+              "09-03",
+              "10-23",
+              "10-27"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "line": "Commission Expense",
+      "dept": "Rooms (OTA)",
+      "vendor": "Expedia",
+      "label": "OTA commission",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Amex - 31003",
+          "source": [
+            "Expedia"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 19
+            }
+          }
+        },
+        "Saco Bay": {
+          "fund": "BOA - 0585",
+          "source": [
+            "Expedia"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 19
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Hotel Supplies",
+      "dept": "Rooms",
+      "vendor": "Golden Malted",
+      "label": "Breakfast supplies",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Amex - 31003",
+          "source": [
+            "Golden Malted"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 8
+            }
+          }
+        },
+        "Saco Bay": {
+          "fund": "Amex - 12009",
+          "source": [
+            "Golden Malted"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 8
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Office Supplies & Software",
+      "dept": "A&G",
+      "vendor": "Google",
+      "label": "Google Workspace",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Capital One",
+          "source": [
+            "Google"
+          ],
+          "schedule": {
+            "dates": [
+              "01-01",
+              "01-02",
+              "01-06",
+              "02-01",
+              "02-02",
+              "02-06",
+              "03-01",
+              "03-06",
+              "03-18",
+              "04-01",
+              "04-02",
+              "04-06",
+              "04-14",
+              "05-01",
+              "05-02",
+              "05-06",
+              "05-17",
+              "06-02",
+              "06-06",
+              "06-26",
+              "07-02",
+              "07-06",
+              "07-26",
+              "08-02",
+              "08-06",
+              "08-27",
+              "09-02",
+              "09-06",
+              "09-26",
+              "10-02",
+              "10-06",
+              "10-20",
+              "11-03",
+              "11-06",
+              "11-24",
+              "12-01",
+              "12-02",
+              "12-06",
+              "12-20"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "line": "Internet",
+      "dept": "Utilities",
+      "vendor": "Great Works Internet",
+      "label": "Internet",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Amex - 31003",
+          "source": [
+            "Great Works Internet"
+          ],
+          "schedule": {
+            "dates": [
+              "02-07",
+              "02-16",
+              "04-01",
+              "06-11",
+              "08-16",
+              "10-29",
+              "12-17"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "line": "Office Supplies & Software",
+      "dept": "A&G",
+      "vendor": "Gsuite",
+      "label": "Software & subscriptions",
+      "hotels": {
+        "Saco Bay": {
+          "fund": "Amex - 12009",
+          "source": [
+            "Gsuite"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Hotel Supplies",
+      "dept": "Rooms",
+      "vendor": "HD Supply",
+      "label": "Repairs & maintenance",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Capital One",
+          "source": [
+            "HD Supply Facilities"
+          ],
+          "schedule": {
+            "dates": [
+              "01-15",
+              "02-13",
+              "03-20",
+              "04-14",
+              "05-22",
+              "07-16",
+              "08-22",
+              "10-24",
+              "12-17"
+            ]
+          }
+        },
+        "Saco Bay": {
+          "fund": "Amex - 12009",
+          "source": [
+            "HD Supply Facilites Maintenance"
+          ],
+          "schedule": {
+            "dates": [
+              "02-17",
+              "04-22",
+              "06-19",
+              "07-23",
+              "08-23",
+              "10-09",
+              "12-16"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "line": "Insurance",
+      "dept": "Fixed Charges",
+      "vendor": "IPFS Corporation",
+      "label": "Insurance financing",
+      "hotels": {
+        "Saco Bay": {
+          "fund": "Chase - 2989",
+          "source": [
+            "IPFS Corporation"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 11
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Rent & Lease",
+      "dept": "Fixed Charges",
+      "vendor": "Leasing Services",
+      "label": "Equipment / vehicle lease",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "BOA - 0463",
+          "source": [
+            "Leasing Services"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 11
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Water",
+      "dept": "Utilities",
+      "vendor": "Maine Water",
+      "label": "Water & sewer",
+      "hotels": {
+        "Saco Bay": {
+          "fund": "Amex - 12009",
+          "source": [
+            "Maine Water"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 25
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Insurance",
+      "dept": "Fixed Charges",
+      "vendor": "Memic",
+      "label": "Workers' comp insurance",
+      "hotels": {
+        "Saco Bay": {
+          "fund": "BOA - 0585",
+          "source": [
+            "Memic"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 9
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Telephone",
+      "dept": "Utilities",
+      "vendor": "Metrofax",
+      "label": "Software & subscriptions",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Amex - 31003",
+          "source": [
+            "Metrofax"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 10
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Repairs & Maintenance",
+      "dept": "Property Ops & Maint",
+      "vendor": "Otis Elevator",
+      "label": "Elevator service",
+      "hotels": {
+        "Saco Bay": {
+          "fund": "Amex - 12009",
+          "source": [
+            "Otis Elevator"
+          ],
+          "schedule": {
+            "dates": [
+              "01-23",
+              "03-31",
+              "07-03",
+              "10-03",
+              "10-27"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "line": "Debt Service \u2014 Principal",
+      "dept": "Below EBITDA",
+      "vendor": "PayZen",
+      "label": "Loan payment",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Capital One",
+          "source": [
+            "PayZen"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 25
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Payroll Expenses",
+      "dept": "Labor (multi)",
+      "vendor": "Payroll",
+      "label": "Net pay + taxes + fees",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Biddeford - 5109",
+          "source": [
+            "Paycheck - Invoice",
+            "Paychex",
+            "Paychex - Payroll",
+            "Paychex - Taxes"
+          ],
+          "schedule": {
+            "weekly": {
+              "weekday": "Wed"
+            }
+          }
+        },
+        "Saco Bay": {
+          "fund": "BOA - 0585",
+          "source": [
+            "Paychek",
+            "Paychex - Invoice"
+          ],
+          "schedule": {
+            "weekly": {
+              "weekday": "Wed"
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Water",
+      "dept": "Utilities",
+      "vendor": "Portland Water District",
+      "label": "Water & sewer",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Biddeford - 5109",
+          "source": [
+            "Portland Water District"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 26
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Office Supplies & Software",
+      "dept": "A&G",
+      "vendor": "QuickBooks",
+      "label": "Software & subscriptions",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Amex - 31003",
+          "source": [
+            "QuickBooks"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 31
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Debt Service \u2014 Principal",
+      "dept": "Below EBITDA",
+      "vendor": "SBA",
+      "label": "SBA loan",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Biddeford - 5109",
+          "source": [
+            "SBA"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 25
+            }
+          }
+        },
+        "Saco Bay": {
+          "fund": "BOA - 0585",
+          "source": [
+            "SBA"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 25
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Internet",
+      "dept": "Utilities",
+      "vendor": "Spectrum",
+      "label": "Internet",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Amex - 31003",
+          "source": [
+            "Spectrum"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 26
+            }
+          }
+        },
+        "Saco Bay": {
+          "fund": "Amex - 12009",
+          "source": [
+            "Spectrum"
+          ],
+          "schedule": {
+            "dates": [
+              "01-10",
+              "01-29",
+              "01-30",
+              "02-10",
+              "02-27",
+              "03-10",
+              "03-24",
+              "04-10",
+              "04-23",
+              "05-10",
+              "05-29",
+              "06-10",
+              "07-01",
+              "07-10",
+              "07-25",
+              "08-10",
+              "08-23",
+              "09-10",
+              "09-25",
+              "10-10",
+              "10-24",
+              "11-10",
+              "12-02",
+              "12-10",
+              "12-26"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "line": "Heat",
+      "dept": "Utilities",
+      "vendor": "Sprague Operating",
+      "label": "Heating fuel",
+      "hotels": {
+        "Saco Bay": {
+          "fund": "BOA - 0585",
+          "source": [
+            "Sprague Operating"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 4
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Rent & Lease",
+      "dept": "Fixed Charges",
+      "vendor": "Tamara Fidler",
+      "label": "Professional services",
+      "hotels": {
+        "Saco Bay": {
+          "fund": "BOA - 0585",
+          "source": [
+            "Tamara Fidler"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 27
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Sales Tax Paid",
+      "dept": "Pass-through",
+      "vendor": "Treasurer, State of Maine",
+      "label": "Sales & lodging tax",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Biddeford - 5109",
+          "source": [
+            "Treasurer, State of Maine"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 15
+            }
+          }
+        },
+        "Saco Bay": {
+          "fund": "BOA - 0585",
+          "source": [
+            "Treasurer, State of Maine"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 15
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Advertising & Marketing",
+      "dept": "Sales & Marketing",
+      "vendor": "Trip Advisor Advertise",
+      "label": "Marketing & advertising",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Amex - 31003",
+          "source": [
+            "Trip Advisor Advertise"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Heat",
+      "dept": "Utilities",
+      "vendor": "Unitil",
+      "label": "Gas / heating",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Capital One",
+          "source": [
+            "Unitil"
+          ],
+          "schedule": {
+            "dates": [
+              "02-05",
+              "03-08",
+              "03-10",
+              "04-14",
+              "06-03",
+              "08-01",
+              "09-10",
+              "10-15",
+              "12-09"
+            ]
+          }
+        },
+        "Saco Bay": {
+          "fund": "Chase - 2989",
+          "source": [
+            "Unitil"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 14
+            }
+          }
+        }
+      }
+    },
+    {
+      "line": "Trash Removal",
+      "dept": "Property Ops & Maint",
+      "vendor": "Win Waste Innovation",
+      "label": "Trash & waste",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Amex - 31003",
+          "source": [
+            "Win Waste Innovation"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 4
+            }
+          }
+        },
+        "Saco Bay": {
+          "fund": "Amex - 12009",
+          "source": [
+            "Win Waste Innovation"
+          ],
+          "schedule": {
+            "dates": [
+              "02-26",
+              "04-16",
+              "05-07",
+              "07-18",
+              "08-14",
+              "10-19",
+              "10-21",
+              "11-05",
+              "12-23",
+              "12-26"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "line": "Guest Services",
+      "dept": "Rooms",
+      "vendor": "XL Sports World",
+      "label": "Other",
+      "hotels": {
+        "Casco Bay": {
+          "fund": "Capital One",
+          "source": [
+            "XL Sports World"
+          ],
+          "schedule": {
+            "monthly": {
+              "day": 23
+            }
+          }
+        }
+      }
+    }
+  ]
+}

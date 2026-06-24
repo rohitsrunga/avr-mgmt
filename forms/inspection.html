@@ -122,6 +122,18 @@
       <button type="button" class="btn secondary" id="new-btn">New inspection</button>
     </div>
 
+    <!-- Shared notes — visible to front desk, housekeeping & managers -->
+    <section class="card" id="notes-card">
+      <div class="section-title">Notes</div>
+      <p class="muted">Shared with the front desk, housekeeping, and managers.</p>
+      <div class="note-add" style="margin-top:12px;">
+        <input id="note-input" type="text" maxlength="280" placeholder="Add a note…" />
+        <button class="btn primary" id="note-add">Add</button>
+      </div>
+      <div id="note-list" class="note-list"></div>
+      <div id="note-meta" class="note-meta"></div>
+    </section>
+
     <footer class="foot">AVR Hospitality Management</footer>
   </div>
 
@@ -445,7 +457,62 @@
       window.scrollTo({ top: 0 });
     });
 
+    // Shared property notepad — read + append. Append-only from the form.
+    function setupNotes() {
+      const pid = getProperty();
+      const list = document.getElementById('note-list');
+      const meta = document.getElementById('note-meta');
+      const input = document.getElementById('note-input');
+      const addBtn = document.getElementById('note-add');
+
+      function currentAuthor() {
+        const sel = document.getElementById('inspector_id');
+        return sel && sel.value ? sel.options[sel.selectedIndex].text : '';
+      }
+      function render(data) {
+        const lines = (data.notes || '').split('\n').filter((l) => l.trim() !== '');
+        list.innerHTML = lines.length === 0
+          ? '<div class="note-empty">No notes yet.</div>'
+          : lines.map((l) => `<div class="note-row">${formatNoteLine(l)}</div>`).join('');
+        meta.textContent = data.updated_at
+          ? `Updated ${new Date(data.updated_at).toLocaleString()}${data.updated_by ? ' · ' + data.updated_by : ''}`
+          : '';
+      }
+      function formatNoteLine(line) {
+        const m = line.match(/^([^:]{1,40}):\s+([\s\S]+)$/);
+        if (m) return `<span class="note-author">${escapeHtml(m[1])}</span>${escapeHtml(m[2])}`;
+        return escapeHtml(line);
+      }
+      async function load() {
+        try {
+          const res = await fetch(`${window.__API_BASE}/api/public/housekeeping/${pid}/shared-notes`);
+          if (res.ok) render(await res.json());
+        } catch (e) { /* leave as-is */ }
+      }
+      async function add() {
+        const note = input.value.trim();
+        if (!note) return;
+        addBtn.disabled = true;
+        try {
+          const res = await fetch(`${window.__API_BASE}/api/public/housekeeping/${pid}/shared-notes`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ note, author: currentAuthor() }),
+          });
+          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Could not add note'); }
+          input.value = '';
+          render(await res.json());
+        } catch (e) { showError(e.message); }
+        finally { addBtn.disabled = false; }
+      }
+
+      addBtn.addEventListener('click', add);
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+      load();
+    }
+
     loadStartData();
+    setupNotes();
   </script>
 </body>
 </html>

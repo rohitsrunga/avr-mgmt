@@ -188,6 +188,53 @@ def public_complete(event, params):
     return ok({"updated": True})
 
 
+@router.get("/api/public/housekeeping/{property_id}/shared-notes")
+def public_get_shared_notes(event, params):
+    """Read the property's shared notepad (also surfaced on the dashboards)."""
+    pid = params["property_id"]
+    err = _check_property(pid)
+    if err:
+        return err
+    item = TBL().get_item(
+        Key={"PK": f"PROPERTY#{pid}", "SK": "SHARED_NOTES"}
+    ).get("Item") or {}
+    return ok({
+        "notes": item.get("notes", ""),
+        "updated_at": item.get("updated_at", ""),
+        "updated_by": item.get("updated_by", ""),
+    })
+
+
+@router.post("/api/public/housekeeping/{property_id}/shared-notes")
+def public_add_shared_note(event, params):
+    """Append a single note line to the shared notepad. Append-only on the
+    public path so a phone left at a cart can't wipe the whole pad; the
+    authenticated dashboard keeps full edit/delete."""
+    pid = params["property_id"]
+    err = _check_property(pid)
+    if err:
+        return err
+    body = parse_body(event)
+    note = (body.get("note") or "").strip()[:280]
+    author = (body.get("author") or "").strip()[:80]
+    if not note:
+        return bad_request("note required")
+    key = {"PK": f"PROPERTY#{pid}", "SK": "SHARED_NOTES"}
+    current = (TBL().get_item(Key=key).get("Item") or {}).get("notes", "")
+    line = f"{author}: {note}" if author else note
+    next_notes = (current + "\n" + line if current.strip() else line)[:5000]
+    updated_at = _now()
+    updated_by = author or "Staff form"
+    TBL().put_item(Item=to_dynamo({
+        "PK": f"PROPERTY#{pid}",
+        "SK": "SHARED_NOTES",
+        "notes": next_notes,
+        "updated_at": updated_at,
+        "updated_by": updated_by,
+    }))
+    return ok({"notes": next_notes, "updated_at": updated_at, "updated_by": updated_by})
+
+
 # ======================================================================
 # Authenticated routes — manager dashboard
 # ======================================================================
@@ -497,6 +544,48 @@ def timeline(event, params):
             "time_display": time_display,
         })
     return ok({"timeline": out})
+
+
+# ----------------------------------------------------------------------
+# Shared notes — a single property-level scratchpad surfaced on both the
+# Front Desk and Housekeeping dashboards. PK = PROPERTY#<id>, SK = SHARED_NOTES.
+# ----------------------------------------------------------------------
+
+@router.get("/api/housekeeping/{property_id}/shared-notes")
+def get_shared_notes(event, params):
+    pid = params["property_id"]
+    err = authorize_property(event, pid, ALL_ROLES)
+    if err:
+        return err
+    item = TBL().get_item(
+        Key={"PK": f"PROPERTY#{pid}", "SK": "SHARED_NOTES"}
+    ).get("Item") or {}
+    return ok({
+        "notes": item.get("notes", ""),
+        "updated_at": item.get("updated_at", ""),
+        "updated_by": item.get("updated_by", ""),
+    })
+
+
+@router.put("/api/housekeeping/{property_id}/shared-notes")
+def put_shared_notes(event, params):
+    pid = params["property_id"]
+    err = authorize_property(event, pid, DASHBOARD_ROLES)
+    if err:
+        return err
+    body = parse_body(event)
+    notes = (body.get("notes") or "").strip()[:5000]
+    identity = get_identity(event)
+    updated_at = _now()
+    updated_by = identity["name"] or identity["email"]
+    TBL().put_item(Item=to_dynamo({
+        "PK": f"PROPERTY#{pid}",
+        "SK": "SHARED_NOTES",
+        "notes": notes,
+        "updated_at": updated_at,
+        "updated_by": updated_by,
+    }))
+    return ok({"notes": notes, "updated_at": updated_at, "updated_by": updated_by})
 
 
 @router.delete("/api/housekeeping/{property_id}/assignments/{assignment_id}")

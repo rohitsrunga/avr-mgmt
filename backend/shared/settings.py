@@ -28,6 +28,7 @@ TOGGLEABLE_FEATURES = (
     "business_case",
     "groups",
     "inspections",
+    "finance_pnl",
 )
 
 

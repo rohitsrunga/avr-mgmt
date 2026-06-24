@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import Banner from '../components/Banner'
 import CopyLink from '../components/CopyLink'
 import FinanceReconciliation from '../components/FinanceReconciliation'
+import FinancePnL from '../components/FinancePnL'
+import PaymentCalendar from '../components/PaymentCalendar'
 import SectionCard from '../components/SectionCard'
 import {
   CONFIG,
@@ -21,7 +23,25 @@ export default function Marketing() {
   const { propertyId, property } = useProperty()
   const { isEnabled } = useFeatureConfig()
   const groupsOn = isEnabled('groups', propertyId)
-  const canSeeFinance = ['owner', 'manager'].includes(user?.role) && propertyId === 'saco_bay'
+  const isManagement = ['owner', 'manager'].includes(user?.role)
+  const pnlOn = isManagement && isEnabled('finance_pnl', propertyId)
+  // Reconciliation is Cloudbeds-backed — Saco Bay only.
+  const reconOn = isManagement && propertyId === 'saco_bay'
+  // All-Hotels consolidation needs P&L enabled on both properties.
+  const pnlBoth = isManagement && isEnabled('finance_pnl', 'casco_bay') && isEnabled('finance_pnl', 'saco_bay')
+  const [financeScope, setFinanceScope] = useState('property') // 'property' | 'all'
+  const consolidated = financeScope === 'all' && pnlBoth
+  // `all`: view supports the All-Hotels scope (reconciliation is per-hotel only).
+  const financeViews = [
+    ...(pnlOn ? [{ id: 'pnl', label: 'Budget Estimation', all: true }] : []),
+    ...(pnlOn ? [{ id: 'payment-calendar', label: 'Payment Calendar', all: true }] : []),
+    ...(reconOn ? [{ id: 'reconciliation', label: 'Reconciliation', all: false }] : []),
+  ]
+  const availableViews = consolidated ? financeViews.filter((v) => v.all) : financeViews
+  const [financeView, setFinanceView] = useState('pnl')
+  const activeFinanceView = availableViews.some((v) => v.id === financeView)
+    ? financeView
+    : availableViews[0]?.id
 
   const [contracts, setContracts] = useState([])
   const [statusFilter, setStatusFilter] = useState('')
@@ -58,10 +78,50 @@ export default function Marketing() {
         {groupsOn && <button onClick={() => setCreating(true)} className="btn-primary">+ New contract</button>}
       </div>
 
-      {canSeeFinance && (
+      {financeViews.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-[16px] font-semibold text-ink tracking-tight">Finance</h2>
-          <FinanceReconciliation propertyId={propertyId} />
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="text-[16px] font-semibold text-ink tracking-tight">Finance</h2>
+            {pnlBoth && (
+              <div className="inline-flex rounded-full bg-surface-muted p-0.5">
+                {[{ id: 'property', label: property?.short || 'This hotel' }, { id: 'all', label: 'All Hotels' }].map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => setFinanceScope(s.id)}
+                    className={`px-3.5 py-1.5 rounded-full text-[13px] font-medium transition ${
+                      financeScope === s.id ? 'bg-white text-ink shadow-sm' : 'text-ink-muted'
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {availableViews.length > 1 && (
+              <div className="inline-flex rounded-full bg-surface-muted p-0.5">
+                {availableViews.map((v) => (
+                  <button
+                    key={v.id}
+                    onClick={() => setFinanceView(v.id)}
+                    className={`px-3.5 py-1.5 rounded-full text-[13px] font-medium transition ${
+                      activeFinanceView === v.id ? 'bg-white text-ink shadow-sm' : 'text-ink-muted'
+                    }`}
+                  >
+                    {v.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {activeFinanceView === 'pnl' && (
+            <FinancePnL propertyIds={consolidated ? ['casco_bay', 'saco_bay'] : [propertyId]} consolidated={consolidated} />
+          )}
+          {activeFinanceView === 'payment-calendar' && (
+            <PaymentCalendar propertyId={consolidated ? 'all_hotels' : propertyId} />
+          )}
+          {activeFinanceView === 'reconciliation' && (
+            <FinanceReconciliation propertyId={propertyId} />
+          )}
         </section>
       )}
 

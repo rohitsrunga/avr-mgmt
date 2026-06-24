@@ -50,6 +50,7 @@ Globals:
         TABLE_GROUP_CONTRACTS: !Ref GroupContractsTable
         TABLE_INSPECTIONS: !Ref InspectionsTable
         TABLE_SETTINGS: !Ref SettingsTable
+        TABLE_FINANCE: !Ref FinanceTable
         EMPLOYEES_FILLED_BUCKET: !Ref EmployeesFilledBucket
         PUBLIC_FORMS_BUCKET: !Ref PublicFormsBucket
         INSPECTION_PHOTOS_BUCKET: !Ref InspectionPhotosBucket
@@ -378,6 +379,32 @@ Resources:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: !Sub '${StackPrefix}-settings'
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+
+  # ----------------------------------------------------------------
+  # Finance — monthly USALI P&L actuals / budgets / forecast inputs.
+  # Actuals are written by scripts/qb_ingest_pnl.py (local QuickBooks
+  # pull → USALI map). Budgets & assumptions are owner/manager-entered.
+  # PK = PROPERTY#<id>
+  # SK patterns:
+  #   ACTUAL#<YYYY-MM>       monthly mapped actuals (from QuickBooks)
+  #   BUDGET#<YYYY-MM>       monthly user-entered budget
+  #   ASSUMPTIONS#<YYYY>     forecast inputs (occupancy/ADR/season/drivers)
+  # ----------------------------------------------------------------
+  FinanceTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${StackPrefix}-finance'
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: PK
@@ -778,10 +805,20 @@ Resources:
               Action:
                 - secretsmanager:GetSecretValue
               Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${StackPrefix}/cloudbeds/*'
+        - DynamoDBCrudPolicy:
+            TableName: !Ref FinanceTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref SettingsTable
       Events:
         Get:
           Type: HttpApi
           Properties: { ApiId: !Ref HttpApi, Method: GET, Path: '/api/finance/{proxy+}' }
+        Put:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: PUT, Path: '/api/finance/{proxy+}' }
+        Post:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Method: POST, Path: '/api/finance/{proxy+}' }
 
   # ================================================================
   # Secrets Manager (Cloudbeds API key — Saco Bay only for now)

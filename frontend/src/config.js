@@ -68,6 +68,7 @@ export const TOGGLEABLE_FEATURES = [
   'business_case',
   'groups',
   'inspections',
+  'finance_pnl',
 ]
 
 // Human-readable labels for the Admin feature toggle UI.
@@ -75,6 +76,7 @@ export const FEATURE_LABELS = {
   business_case:  'Business Case',
   groups:         'Group Contracts',
   inspections:    'Inspections',
+  finance_pnl:    'Budget Estimation',
 }
 
 // Dinner menu options (Casco Bay evening dinner program).

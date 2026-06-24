@@ -44,13 +44,16 @@ import re
 import traceback
 import urllib.parse
 import urllib.request
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import boto3
 
-from shared.auth import MANAGEMENT_ROLES, authorize_property
-from shared.response import bad_request, ok, server_error
-from shared.router import Router, query_params
+from shared.auth import MANAGEMENT_ROLES, authorize_property, get_identity
+from shared.dynamo import query_pk, table, to_dynamo
+from shared.response import bad_request, forbidden, ok, server_error
+from shared.router import Router, parse_body, query_params
+from shared.settings import VALID_PROPERTIES, is_feature_enabled
+from shared import payment_calendar, usali
 
 _secrets = boto3.client("secretsmanager")
 SECRET_PREFIX = os.environ.get("CLOUDBEDS_SECRET_PREFIX", "avr/cloudbeds")
@@ -460,6 +463,439 @@ def reconciliation(event, params):
         "exceptions": exceptions,
         "bank_posts": bank_posts,
         "synced_at": _now(),
+    })
+
+
+# ================================================================
+# USALI P&L / Budget / Forecast (both properties, owner/manager).
+# Actuals are ingested from QuickBooks by scripts/qb_ingest_pnl.py;
+# budgets + forecast assumptions are entered here. Gated by the
+# `finance_pnl` per-property feature flag.
+# ================================================================
+FINANCE_FEATURE = "finance_pnl"
+_YEAR_RE = re.compile(r"^\d{4}$")
+_MONTH_RE = re.compile(r"^\d{4}-\d{2}$")
+
+
+def _fin_tbl():
+    return table("TABLE_FINANCE")
+
+
+def _pk(pid):
+    return f"PROPERTY#{pid}"
+
+
+def _check_pnl(event, pid):
+    """Property scope (owner/manager) + finance_pnl feature gate."""
+    if pid not in VALID_PROPERTIES:
+        return bad_request(f"unknown property: {pid}")
+    err = authorize_property(event, pid, MANAGEMENT_ROLES)
+    if err:
+        return err
+    if not is_feature_enabled(pid, FINANCE_FEATURE):
+        return forbidden("P&L is disabled for this property")
+    return None
+
+
+def _year_of(event, default=None):
+    q = query_params(event)
+    y = q.get("year")
+    if y and _YEAR_RE.match(y):
+        return int(y)
+    return default or datetime.now(timezone.utc).year
+
+
+def _monthly_by_prefix(pid, prefix):
+    """{'YYYY-MM': item} for ACTUAL#/BUDGET# rows under a property."""
+    out = {}
+    for item in query_pk(_fin_tbl(), _pk(pid), prefix):
+        sk = item.get("SK", "")
+        parts = sk.split("#", 1)
+        if len(parts) == 2 and _MONTH_RE.match(parts[1]):
+            out[parts[1]] = item
+    return out
+
+
+def _bucket(item):
+    """Normalise a stored monthly item into the shape usali helpers expect."""
+    return {
+        "lines": item.get("lines") or {},
+        "room_revenue": item.get("room_revenue", 0),
+        "other_revenue": item.get("other_revenue", 0),
+    }
+
+
+@router.get("/api/finance/{property_id}/pnl")
+def pnl(event, params):
+    pid = params["property_id"]
+    err = _check_pnl(event, pid)
+    if err:
+        return err
+    year = _year_of(event)
+
+    actual_items = _monthly_by_prefix(pid, "ACTUAL#")
+    actuals_all = {m: _bucket(it) for m, it in actual_items.items()}
+    budgets_all = {m: _bucket(it) for m, it in _monthly_by_prefix(pid, "BUDGET#").items()}
+    assum_item = _fin_tbl().get_item(
+        Key={"PK": _pk(pid), "SK": f"ASSUMPTIONS#{year}"}
+    ).get("Item")
+    assumptions = {k: v for k, v in (assum_item or {}).items() if k not in ("PK", "SK")}
+
+    forecast_all = usali.compute_forecast(assumptions, actuals_all, year)
+    forecast_basis = forecast_all.pop("_forecast_basis", "")
+    yoy_factor = forecast_all.pop("_yoy_factor", None)
+
+    month_list = [f"{year}-{m:02d}" for m in range(1, 13)]
+
+    def waterfall_for(source):
+        b = source or {"lines": {}, "room_revenue": 0, "other_revenue": 0}
+        return usali.build_waterfall(
+            b.get("lines") or {},
+            {"room": b.get("room_revenue", 0), "other": b.get("other_revenue", 0)},
+        )
+
+    prior_months = [f"{year - 1}-{m:02d}" for m in range(1, 13)]
+    act_s = [waterfall_for(actuals_all.get(m)) for m in month_list]
+    bud_s = [waterfall_for(budgets_all.get(m)) for m in month_list]
+    fc_s = [waterfall_for(forecast_all.get(m)) for m in month_list]
+    pri_s = [waterfall_for(actuals_all.get(m)) for m in prior_months]
+
+    def amt(series, mi, ri):
+        v = series[mi][ri]["amount"]
+        return None if v is None else _round2(v)
+
+    rows = []
+    scaffold = act_s[0]  # row order is identical across months/series
+    for ri, base in enumerate(scaffold):
+        row = {"kind": base["kind"], "label": base["label"], "level": base["level"]}
+        if base.get("dept"):
+            row["dept"] = base["dept"]
+        if base.get("driver"):
+            row["driver"] = base["driver"]
+        actual = [amt(act_s, mi, ri) for mi in range(12)]
+        budget = [amt(bud_s, mi, ri) for mi in range(12)]
+        forecast = [amt(fc_s, mi, ri) for mi in range(12)]
+        prior = [amt(pri_s, mi, ri) for mi in range(12)]
+        variance = [
+            _round2(actual[i] - budget[i])
+            if actual[i] is not None and budget[i] is not None else None
+            for i in range(12)
+        ]
+        row.update(actual=actual, budget=budget, forecast=forecast, prior=prior, variance=variance)
+        rows.append(row)
+
+    # Third drill-down: {account_key: {name: [12 monthly amounts]}} for this
+    # year, assembled from the stored (already >=$1K) name detail.
+    name_detail = {}
+    for mi, ym in enumerate(month_list):
+        names = ((actual_items.get(ym) or {}).get("names")) or {}
+        for key, nmap in names.items():
+            for nm, val in nmap.items():
+                arr = name_detail.setdefault(key, {}).setdefault(nm, [None] * 12)
+                arr[mi] = _round2(float(val))
+
+    # Cash in Bank — month-end bank balances, forecast rolled forward from the
+    # last actual balance by (EBITDA − estimated income tax) per month.
+    # An owner-entered CASH_OVERRIDE#<YYYY-MM> {account: balance} takes priority
+    # over the QB book balance (QB's API only exposes the *book* balance, which
+    # diverges when bank-feed deposits are recorded late).
+    tax_rate = float(assumptions.get("income_tax_rate", 25) or 0)
+    ebitda_idx = next((ri for ri, b in enumerate(scaffold)
+                       if b["kind"] == "subtotal" and b["label"] == "EBITDA"), None)
+
+    override_items = _monthly_by_prefix(pid, "CASH_OVERRIDE#")
+    overrides_by_month = {
+        m: {k: float(v) for k, v in (it.get("accounts") or {}).items()}
+        for m, it in override_items.items()
+    }
+
+    def book_cash(month):
+        return {k: float(v) for k, v in ((actual_items.get(month) or {}).get("cash") or {}).items()}
+
+    def eff_cash(month):
+        """Effective per-account balances: override wins, else QB book."""
+        book, ov = book_cash(month), overrides_by_month.get(month) or {}
+        return {n: (ov[n] if n in ov else book[n]) for n in set(book) | set(ov)}
+
+    def has_cash(month):
+        return bool(book_cash(month)) or bool(overrides_by_month.get(month))
+
+    def eff_total(month):
+        return sum(eff_cash(month).values()) if has_cash(month) else None
+
+    cash_months = sorted(m for m in (set(actual_items) | set(overrides_by_month)) if has_cash(m))
+    cash_actual = [eff_total(m) for m in month_list]
+    cash_prior = [eff_total(m) for m in prior_months]
+
+    # Per-account month-end balances for the drill-down (effective + raw book).
+    # Include EVERY bank account ever seen (any year) or overridden, so a month
+    # with missing data still shows an (editable) row rather than vanishing.
+    all_names = sorted(
+        {n for it in actual_items.values() for n in (it.get("cash") or {})}
+        | {n for ov in overrides_by_month.values() for n in ov}
+    )
+    cash_accounts = {n: [None] * 12 for n in all_names}
+    book_accounts = {n: [None] * 12 for n in all_names}
+    for mi, ym in enumerate(month_list):
+        e, b = eff_cash(ym), book_cash(ym)
+        for n in all_names:
+            if n in e:
+                cash_accounts[n][mi] = _round2(e[n])
+            if n in b:
+                book_accounts[n][mi] = _round2(b[n])
+
+    def seed_before(ym):
+        prior_cash = [m for m in cash_months if m < ym]
+        return eff_total(prior_cash[-1]) if prior_cash else None
+
+    cash_series = [None] * 12
+    running = None
+    for mi, ym in enumerate(month_list):
+        if cash_actual[mi] is not None:
+            running = cash_actual[mi]
+            cash_series[mi] = _round2(cash_actual[mi])
+        else:
+            if running is None:
+                running = seed_before(ym)
+            base = running or 0.0
+            eb = fc_s[mi][ebitda_idx]["amount"] if ebitda_idx is not None else 0.0
+            eb = float(eb or 0.0)
+            net = eb - max(0.0, eb) * tax_rate / 100.0
+            running = base + net
+            cash_series[mi] = _round2(running)
+
+    cash = {
+        "total": cash_series,
+        "prior": cash_prior,
+        "accounts": cash_accounts,
+        "book": book_accounts,
+        "overrides": {m: overrides_by_month[m] for m in month_list if m in overrides_by_month},
+        "actual_months": [m for m in month_list if has_cash(m)],
+        "tax_rate": tax_rate,
+    }
+
+    pulled = [it.get("pulled_at") for it in actual_items.values() if it.get("pulled_at")]
+    return ok({
+        "property_id": pid,
+        "year": year,
+        "months": month_list,
+        "rows": rows,
+        "name_detail": name_detail,
+        "cash": cash,
+        "assumptions": assumptions,
+        "has_assumptions": bool(assum_item),
+        "forecast_basis": forecast_basis,
+        "yoy_factor": yoy_factor,
+        "prior_year_months": sorted(m for m in actuals_all if m.startswith(str(year - 1))),
+        "actual_months": sorted(m for m in actuals_all if m.startswith(str(year))),
+        "synced_at": max(pulled) if pulled else None,
+    })
+
+
+@router.get("/api/finance/{property_id}/budget")
+def get_budget(event, params):
+    pid = params["property_id"]
+    err = _check_pnl(event, pid)
+    if err:
+        return err
+    year = _year_of(event)
+    budgets = {
+        m: _bucket(it) for m, it in _monthly_by_prefix(pid, "BUDGET#").items()
+        if m.startswith(str(year))
+    }
+    return ok({"property_id": pid, "year": year, "budget": budgets})
+
+
+@router.put("/api/finance/{property_id}/budget")
+def put_budget(event, params):
+    pid = params["property_id"]
+    err = _check_pnl(event, pid)
+    if err:
+        return err
+    body = parse_body(event)
+    month = (body.get("month") or "").strip()
+    if not _MONTH_RE.match(month):
+        return bad_request("month must be YYYY-MM")
+    lines = body.get("lines") or {}
+    if not isinstance(lines, dict):
+        return bad_request("lines must be an object")
+    # Keep only known account keys; coerce to numbers.
+    clean = {}
+    for k, v in lines.items():
+        if k in usali.ACCOUNT_KEYS:
+            try:
+                clean[k] = float(v)
+            except (TypeError, ValueError):
+                return bad_request(f"non-numeric budget for {k}")
+    item = {
+        "PK": _pk(pid),
+        "SK": f"BUDGET#{month}",
+        "lines": clean,
+        "room_revenue": float(body.get("room_revenue") or 0),
+        "other_revenue": float(body.get("other_revenue") or 0),
+        "updated_at": _now(),
+        "updated_by": get_identity(event).get("email", ""),
+    }
+    _fin_tbl().put_item(Item=to_dynamo(item))
+    return ok({"saved": True, "month": month, "budget": _bucket(item)})
+
+
+@router.get("/api/finance/{property_id}/assumptions")
+def get_assumptions(event, params):
+    pid = params["property_id"]
+    err = _check_pnl(event, pid)
+    if err:
+        return err
+    year = _year_of(event)
+    item = _fin_tbl().get_item(
+        Key={"PK": _pk(pid), "SK": f"ASSUMPTIONS#{year}"}
+    ).get("Item")
+    assumptions = {k: v for k, v in (item or {}).items() if k not in ("PK", "SK")}
+    return ok({"property_id": pid, "year": year, "assumptions": assumptions or None})
+
+
+@router.put("/api/finance/{property_id}/assumptions")
+def put_assumptions(event, params):
+    pid = params["property_id"]
+    err = _check_pnl(event, pid)
+    if err:
+        return err
+    year = _year_of(event)
+    body = parse_body(event)
+
+    item = {
+        "PK": _pk(pid),
+        "SK": f"ASSUMPTIONS#{year}",
+        "updated_at": _now(),
+        "updated_by": get_identity(event).get("email", ""),
+    }
+    # Optional manual Y/Y growth override (percent). Blank/absent clears it
+    # (the put replaces the whole item), so the computed YTD trend resumes.
+    ov = body.get("yoy_override")
+    if ov not in (None, ""):
+        try:
+            item["yoy_override"] = float(ov)
+        except (TypeError, ValueError):
+            return bad_request("yoy_override must be a number (percent)")
+
+    tr = body.get("income_tax_rate")
+    if tr not in (None, ""):
+        try:
+            item["income_tax_rate"] = float(tr)
+        except (TypeError, ValueError):
+            return bad_request("income_tax_rate must be a number (percent)")
+
+    _fin_tbl().put_item(Item=to_dynamo(item))
+    stored = {k: v for k, v in item.items() if k not in ("PK", "SK")}
+    return ok({"saved": True, "year": year, "assumptions": stored})
+
+
+@router.put("/api/finance/{property_id}/cash-override")
+def put_cash_override(event, params):
+    """Owner-entered actual month-end bank balances that override the QB book
+    balance for that month. Body: {month: 'YYYY-MM', accounts: {name: balance}}.
+    Blank/absent accounts are dropped; an empty set removes the override."""
+    pid = params["property_id"]
+    err = _check_pnl(event, pid)
+    if err:
+        return err
+    body = parse_body(event)
+    month = (body.get("month") or "").strip()
+    if not _MONTH_RE.match(month):
+        return bad_request("month must be YYYY-MM")
+    accounts_in = body.get("accounts")
+    if not isinstance(accounts_in, dict):
+        return bad_request("accounts must be an object")
+    clean = {}
+    for name, val in accounts_in.items():
+        if val in (None, ""):
+            continue
+        try:
+            clean[str(name)] = float(val)
+        except (TypeError, ValueError):
+            return bad_request(f"non-numeric balance for {name}")
+    key = {"PK": _pk(pid), "SK": f"CASH_OVERRIDE#{month}"}
+    if clean:
+        _fin_tbl().put_item(Item=to_dynamo({
+            **key, "accounts": clean,
+            "updated_at": _now(), "updated_by": get_identity(event).get("email", ""),
+        }))
+    else:
+        _fin_tbl().delete_item(Key=key)  # all cleared → drop the override
+    return ok({"saved": True, "month": month, "accounts": clean})
+
+
+# ================================================================
+# Payment / obligations calendar (weekly payables matrix).
+# Vendor obligation records + daily payment history are ingested from
+# QuickBooks by scripts/qb_ingest_payments.py (PAYOBLIG#<line>#<vendor> rows);
+# this route does the horizon-dependent week math + nesting. Owner/manager,
+# gated by the same finance_pnl flag as the P&L. Supports an "all_hotels"
+# property scope that nests both hotels under each vendor.
+# ================================================================
+ALL_HOTELS = "all_hotels"
+HOTEL_NAMES = {"casco_bay": "Casco Bay", "saco_bay": "Saco Bay"}
+_DEFAULT_PC_MONTHS = 6
+
+
+def _payoblig_records(pid, hotel_name):
+    """Obligation records under a property, tagged with the display hotel name."""
+    out = []
+    for item in query_pk(_fin_tbl(), _pk(pid), "PAYOBLIG#"):
+        rec = {k: v for k, v in item.items() if k not in ("PK", "SK")}
+        rec["hotel"] = hotel_name
+        out.append(rec)
+    return out
+
+
+@router.get("/api/finance/{property_id}/payment-calendar")
+def payment_calendar_route(event, params):
+    pid = params["property_id"]
+    if pid == ALL_HOTELS:
+        # Both hotels merged. Owner/manager only; both must have the flag on.
+        err = authorize_property(event, "casco_bay", MANAGEMENT_ROLES)
+        if err:
+            return err
+        if not all(is_feature_enabled(p, FINANCE_FEATURE) for p in VALID_PROPERTIES):
+            return forbidden("Payment calendar is disabled for a property")
+        scopes = list(VALID_PROPERTIES)
+    else:
+        err = _check_pnl(event, pid)
+        if err:
+            return err
+        scopes = [pid]
+
+    q = query_params(event)
+    months = q.get("months")
+    try:
+        n_months = int(months) if months else _DEFAULT_PC_MONTHS
+    except (TypeError, ValueError):
+        return bad_request("months must be an integer")
+    n_months = max(1, min(18, n_months))
+
+    today = datetime.now(timezone.utc).date()
+    start_q = q.get("start")
+    if start_q:
+        if not _MONTH_RE.match(start_q):
+            return bad_request("start must be YYYY-MM")
+        sy, sm = map(int, start_q.split("-"))
+    else:
+        sy, sm = today.year, today.month
+    start = date(sy, sm, 1)
+
+    records = []
+    for p in scopes:
+        records += _payoblig_records(p, HOTEL_NAMES.get(p, p))
+
+    data = payment_calendar.build_calendar(records, start, n_months, today=today)
+    pulled = [r.get("pulled_at") for r in records if r.get("pulled_at")]
+    return ok({
+        "property_id": pid,
+        "scope": "all_hotels" if pid == ALL_HOTELS else pid,
+        "start": start.strftime("%Y-%m"),
+        "months": n_months,
+        **data,
+        "synced_at": max(pulled) if pulled else None,
     })
 
 

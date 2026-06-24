@@ -253,5 +253,10 @@ frontend/.env.local
 
 # QuickBooks OAuth token cache (contains live refresh token)
 scripts/.qb_tokens.json
+scripts/.qb_tokens_*.json
 scripts/.qb_localhost_cert.pem
 scripts/.qb_localhost_key.pem
+
+# Local QuickBooks pulls / extracts — never committed. The hand-maintained
+# payment-calendar config lives in config/ (committed) instead.
+data/
