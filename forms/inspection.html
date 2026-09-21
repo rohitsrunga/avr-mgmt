@@ -470,7 +470,8 @@
         return sel && sel.value ? sel.options[sel.selectedIndex].text : '';
       }
       function render(data) {
-        const lines = (data.notes || '').split('\n').filter((l) => l.trim() !== '');
+        // Newest first — the pad is stored oldest-first.
+        const lines = (data.notes || '').split('\n').filter((l) => l.trim() !== '').reverse();
         list.innerHTML = lines.length === 0
           ? '<div class="note-empty">No notes yet.</div>'
           : lines.map((l) => `<div class="note-row">${formatNoteLine(l)}</div>`).join('');
@@ -478,10 +479,23 @@
           ? `Updated ${new Date(data.updated_at).toLocaleString()}${data.updated_by ? ' · ' + data.updated_by : ''}`
           : '';
       }
+      // Stored lines are "<ISO timestamp>\t<author>: <note>" — strip the
+      // stamp (older lines don't carry one) and bold the author.
       function formatNoteLine(line) {
+        const tab = line.indexOf('\t');
+        let when = '';
+        if (tab > 0) {
+          const d = new Date(line.slice(0, tab));
+          if (!isNaN(d.getTime())) {
+            when = `<span class="note-when">${escapeHtml(d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}</span>`;
+            line = line.slice(tab + 1);
+          }
+        }
         const m = line.match(/^([^:]{1,40}):\s+([\s\S]+)$/);
-        if (m) return `<span class="note-author">${escapeHtml(m[1])}</span>${escapeHtml(m[2])}`;
-        return escapeHtml(line);
+        const body = m
+          ? `<span class="note-author">${escapeHtml(m[1])}</span>${escapeHtml(m[2])}`
+          : escapeHtml(line);
+        return when + body;
       }
       async function load() {
         try {

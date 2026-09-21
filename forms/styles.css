@@ -542,6 +542,7 @@ button.btn.block {
   white-space: pre-wrap;
 }
 .note-row .note-author { font-weight: 600; color: var(--ink); margin-right: 4px; }
+.note-row .note-when { color: var(--ink-faint); font-size: 12px; margin-right: 8px; font-variant-numeric: tabular-nums; }
 .note-empty {
   color: var(--ink-muted);
   font-size: 14px;

@@ -188,6 +188,61 @@ def public_complete(event, params):
     return ok({"updated": True})
 
 
+# The shared notepad is one newline-delimited blob. Each line is stored as
+#     <ISO-8601 timestamp>\tRoom 203 (Maria): Toilet is broken
+# so the dashboards can group by day and show a rolling window. Lines written
+# before this format existed have no prefix; they're kept verbatim and the UI
+# files them under "Earlier" rather than guessing a date for them.
+NOTE_RETENTION_DAYS = 90
+NOTES_MAX_CHARS = 5000
+
+
+def _stamp(line: str) -> str:
+    return f"{_now()}\t{line}"
+
+
+def _prune_notes(notes: str) -> str:
+    """Drop lines past the retention window, then drop the oldest lines until
+    the blob fits. Appending used to truncate the *end* of the blob at 5000
+    chars, which silently ate the newest note once the pad filled up."""
+    lines = [l for l in notes.split("\n") if l.strip()]
+    cutoff = datetime.now(timezone.utc) - timedelta(days=NOTE_RETENTION_DAYS)
+    kept = []
+    for line in lines:
+        head, tab, _rest = line.partition("\t")
+        if not tab:
+            kept.append(line)          # legacy, undated — keep as-is
+            continue
+        try:
+            when = datetime.fromisoformat(head)
+        except ValueError:
+            kept.append(line)
+            continue
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        if when >= cutoff:
+            kept.append(line)
+    while kept and len("\n".join(kept)) > NOTES_MAX_CHARS:
+        kept.pop(0)                    # oldest first, newest always survives
+    return "\n".join(kept)
+
+
+def _append_note(pid: str, line: str, updated_by: str):
+    key = {"PK": f"PROPERTY#{pid}", "SK": "SHARED_NOTES"}
+    current = (TBL().get_item(Key=key).get("Item") or {}).get("notes", "")
+    stamped = _stamp(line)
+    next_notes = _prune_notes(current + "\n" + stamped if current.strip() else stamped)
+    updated_at = _now()
+    TBL().put_item(Item=to_dynamo({
+        "PK": f"PROPERTY#{pid}",
+        "SK": "SHARED_NOTES",
+        "notes": next_notes,
+        "updated_at": updated_at,
+        "updated_by": updated_by,
+    }))
+    return ok({"notes": next_notes, "updated_at": updated_at, "updated_by": updated_by})
+
+
 @router.get("/api/public/housekeeping/{property_id}/shared-notes")
 def public_get_shared_notes(event, params):
     """Read the property's shared notepad (also surfaced on the dashboards)."""
@@ -225,8 +280,6 @@ def public_add_shared_note(event, params):
     room = re.sub(r"[^A-Za-z0-9-]", "", str(body.get("room") or ""))[:10]
     if not note:
         return bad_request("note required")
-    key = {"PK": f"PROPERTY#{pid}", "SK": "SHARED_NOTES"}
-    current = (TBL().get_item(Key=key).get("Item") or {}).get("notes", "")
     if room and author:
         line = f"Room {room} ({author}): {note}"
     elif room:
@@ -235,17 +288,7 @@ def public_add_shared_note(event, params):
         line = f"{author}: {note}"
     else:
         line = note
-    next_notes = (current + "\n" + line if current.strip() else line)[:5000]
-    updated_at = _now()
-    updated_by = author or "Staff form"
-    TBL().put_item(Item=to_dynamo({
-        "PK": f"PROPERTY#{pid}",
-        "SK": "SHARED_NOTES",
-        "notes": next_notes,
-        "updated_at": updated_at,
-        "updated_by": updated_by,
-    }))
-    return ok({"notes": next_notes, "updated_at": updated_at, "updated_by": updated_by})
+    return _append_note(pid, line, author or "Staff form")
 
 
 # ======================================================================
@@ -580,6 +623,25 @@ def get_shared_notes(event, params):
     })
 
 
+@router.post("/api/housekeeping/{property_id}/shared-notes")
+def add_shared_note(event, params):
+    """Append one note from a dashboard. Server-stamped like the public path,
+    so a note is dated by the API clock rather than by whatever the browser
+    thinks the time is."""
+    pid = params["property_id"]
+    err = authorize_property(event, pid, DASHBOARD_ROLES)
+    if err:
+        return err
+    body = parse_body(event)
+    note = " ".join(str(body.get("note") or "").split())[:280]
+    if not note:
+        return bad_request("note required")
+    identity = get_identity(event)
+    author = identity["name"] or identity["email"]
+    line = f"{author}: {note}" if author else note
+    return _append_note(pid, line, author or "Dashboard")
+
+
 @router.put("/api/housekeeping/{property_id}/shared-notes")
 def put_shared_notes(event, params):
     pid = params["property_id"]
@@ -587,7 +649,9 @@ def put_shared_notes(event, params):
     if err:
         return err
     body = parse_body(event)
-    notes = (body.get("notes") or "").strip()[:5000]
+    # Rewritten wholesale by the dashboard (deleting a line). Prune rather
+    # than slice, so the cap never cuts a line in half or drops a timestamp.
+    notes = _prune_notes(str(body.get("notes") or ""))
     identity = get_identity(event)
     updated_at = _now()
     updated_by = identity["name"] or identity["email"]
