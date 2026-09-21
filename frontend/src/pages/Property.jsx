@@ -340,11 +340,11 @@ function CleaningView({ propertyId, date, roster, assignments, progress, allRoom
             </div>
           }
           subtitle={
-            cbConnected
-              ? selectedHkId
-                ? `Click a room to assign it to ${roster.find((r) => r.housekeeper_id === selectedHkId)?.name || 'the selected housekeeper'}.`
-                : `From Cloudbeds · synced ${timeAgo(cloudbeds.synced_at)}`
-              : 'Cloudbeds not connected — falling back to every room in the property minus assigned'
+            selectedHkId
+              ? `Click a room to assign it to ${roster.find((r) => r.housekeeper_id === selectedHkId)?.name || 'the selected housekeeper'}.`
+              : cbConnected
+                ? `From Cloudbeds · synced ${timeAgo(cloudbeds.synced_at)}`
+                : ''
           }
         >
           {cbConnected && <RoomLegend />}
