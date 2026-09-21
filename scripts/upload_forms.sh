@@ -30,7 +30,7 @@ trap 'rm -rf "$TMP"' EXIT
 
 cp forms/styles.css "$TMP/styles.css"
 # Substitute the API base into each HTML file.
-PAGES=(dinner.html housekeeping.html onboarding.html handbook.html groups.html inventory.html inspection.html cloudbeds_callback.html)
+PAGES=(dinner.html housekeeping.html onboarding.html handbook.html inventory.html inspection.html cloudbeds_callback.html)
 for page in "${PAGES[@]}"; do
   sed "s|__API_BASE__|$API_URL|g" "forms/$page" > "$TMP/$page"
 done
@@ -50,6 +50,5 @@ echo "  Housekeeping Saco:     $WEBSITE_BASE/housekeeping.html?p=saco_bay"
 echo "  Onboarding (template): $WEBSITE_BASE/onboarding.html?token=<token>"
 echo "  Handbook Casco:        $WEBSITE_BASE/handbook.html?p=casco_bay"
 echo "  Handbook Saco:         $WEBSITE_BASE/handbook.html?p=saco_bay"
-echo "  Group inquiry:         $WEBSITE_BASE/groups.html?p=casco_bay"
 echo "  Stock check:           $WEBSITE_BASE/inventory.html?p=casco_bay"
 echo "  Inspection form:       $WEBSITE_BASE/inspection.html?p=casco_bay"

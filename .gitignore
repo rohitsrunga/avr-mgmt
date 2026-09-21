@@ -2,7 +2,8 @@
 __pycache__/
 *.py[codz]
 *$py.class
-
+.claude/
+CLAUDE.md
 # C extensions
 *.so
 
@@ -260,3 +261,8 @@ scripts/.qb_localhost_key.pem
 # Local QuickBooks pulls / extracts — never committed. The hand-maintained
 # payment-calendar config lives in config/ (committed) instead.
 data/
+
+# Reference clone of a separate project — it has its own .git, so committing
+# it records a bare gitlink with no .gitmodules entry, which breaks every
+# recursive checkout (including the Pages build). Keep it local.
+template-mgmt/
