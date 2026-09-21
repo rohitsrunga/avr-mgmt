@@ -128,7 +128,7 @@ export default function Inventory() {
         )}
       </div>
 
-      {formUrl && <CopyLink url={formUrl} label="Stock-check public form" />}
+      {formUrl && <CopyLink url={formUrl} label="Inventory Form" />}
       {error && <Banner tone="error">{error}</Banner>}
 
       <div className="flex gap-2 flex-wrap">

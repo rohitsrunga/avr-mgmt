@@ -26,9 +26,7 @@ VALID_PROPERTIES = ("casco_bay", "saco_bay")
 # dinner_orders Lambda — it is intentionally NOT a per-property toggle.
 TOGGLEABLE_FEATURES = (
     "business_case",
-    "groups",
     "inspections",
-    "finance_pnl",
 )
 
 

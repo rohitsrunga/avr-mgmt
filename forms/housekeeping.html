@@ -24,7 +24,6 @@
 
     <!-- Step 1: choose housekeeper -->
     <div id="pick" class="card">
-      <h2 class="section-title">Who's working?</h2>
       <div class="field">
         <label for="housekeeper-select">Your name</label>
         <select id="housekeeper-select">
@@ -42,7 +41,7 @@
             <div style="font-size:13px;color:var(--ink-muted);">Signed in as</div>
             <div id="who" style="font-size:17px;font-weight:600;letter-spacing:-0.012em;"></div>
           </div>
-          <button class="btn secondary" id="switch-btn">Switch</button>
+          <button class="btn secondary" id="switch-btn">Sign out</button>
         </div>
         <div class="progress">
           <span id="progress-text" style="font-variant-numeric:tabular-nums;">0 of 0</span>
@@ -51,18 +50,6 @@
         </div>
         <div id="room-list" class="room-list"></div>
         <div id="empty" class="muted hidden" style="text-align:center;padding:24px 0;">No rooms assigned yet.</div>
-      </div>
-
-      <!-- Shared notes — visible to front desk, housekeeping & managers -->
-      <div class="card">
-        <h2 class="section-title">Notes</h2>
-        <p class="muted">Shared with the front desk, managers, and other staff.</p>
-        <div class="note-add" style="margin-top:12px;">
-          <input id="note-input" type="text" maxlength="280" placeholder="Add a note…" />
-          <button class="btn primary" id="note-add">Add</button>
-        </div>
-        <div id="note-list" class="note-list"></div>
-        <div id="note-meta" class="note-meta"></div>
       </div>
     </div>
 
@@ -99,6 +86,9 @@
 
     let currentHousekeeper = null;
     let currentAssignments = [];
+    // Half-typed room notes, keyed by assignment id. The list re-renders on
+    // every Done/Undo, so drafts are re-hydrated instead of lost.
+    const noteDrafts = {};
 
     async function loadRoster() {
       const sel = document.getElementById('housekeeper-select');
@@ -151,56 +141,7 @@
       document.getElementById('who').textContent = name;
       document.getElementById('pick').classList.add('hidden');
       document.getElementById('rooms').classList.remove('hidden');
-      setupNotes();
       await refreshAssignments();
-    }
-
-    // Shared property notepad — read + append. Append-only from the form.
-    let notesReady = false;
-    function setupNotes() {
-      const list = document.getElementById('note-list');
-      const meta = document.getElementById('note-meta');
-      const input = document.getElementById('note-input');
-      const addBtn = document.getElementById('note-add');
-
-      function render(data) {
-        const lines = (data.notes || '').split('\n').filter((l) => l.trim() !== '');
-        list.innerHTML = lines.length === 0
-          ? '<div class="note-empty">No notes yet.</div>'
-          : lines.map((l) => `<div class="note-row">${formatNoteLine(l)}</div>`).join('');
-        meta.textContent = data.updated_at
-          ? `Updated ${new Date(data.updated_at).toLocaleString()}${data.updated_by ? ' · ' + data.updated_by : ''}`
-          : '';
-      }
-      async function load() {
-        try {
-          const res = await fetch(`${window.__API_BASE}/api/public/housekeeping/${PROPERTY}/shared-notes`);
-          if (res.ok) render(await res.json());
-        } catch (e) { /* leave as-is */ }
-      }
-      async function add() {
-        const note = input.value.trim();
-        if (!note) return;
-        addBtn.disabled = true;
-        try {
-          const res = await fetch(`${window.__API_BASE}/api/public/housekeeping/${PROPERTY}/shared-notes`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ note, author: currentHousekeeper ? currentHousekeeper.name : '' }),
-          });
-          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Could not add note'); }
-          input.value = '';
-          render(await res.json());
-        } catch (e) { showError(e.message); }
-        finally { addBtn.disabled = false; }
-      }
-
-      if (!notesReady) {
-        addBtn.addEventListener('click', add);
-        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
-        notesReady = true;
-      }
-      load();
     }
 
     async function refreshAssignments() {
@@ -226,14 +167,22 @@
       } else {
         empty.classList.add('hidden');
         container.innerHTML = currentAssignments.map((a) => `
-          <div class="room ${a.status === 'done' ? 'done' : ''}" data-id="${a.assignment_id}">
-            <div>
-              <div class="number">${escapeHtml(a.room_number)}</div>
-              ${a.notes ? `<div class="notes">${escapeHtml(a.notes)}</div>` : ''}
+          <div class="room room-card ${a.status === 'done' ? 'done' : ''}" data-id="${a.assignment_id}" data-room="${escapeHtml(a.room_number)}">
+            <div class="room-head">
+              <div>
+                <div class="number">${escapeHtml(a.room_number)}</div>
+                ${a.notes ? `<div class="notes">${escapeHtml(a.notes)}</div>` : ''}
+              </div>
+              <button class="btn ${a.status === 'done' ? 'secondary' : 'primary'}" data-action="${a.status === 'done' ? 'reopen' : 'complete'}">
+                ${a.status === 'done' ? 'Undo' : 'Done'}
+              </button>
             </div>
-            <button class="btn ${a.status === 'done' ? 'secondary' : 'primary'}" data-action="${a.status === 'done' ? 'reopen' : 'complete'}">
-              ${a.status === 'done' ? 'Undo' : 'Done'}
-            </button>
+            <div class="room-note">
+              <textarea rows="2" maxlength="280" data-note-input
+                placeholder="Note about room ${escapeHtml(a.room_number)}…">${escapeHtml(noteDrafts[a.assignment_id] || '')}</textarea>
+              <button class="btn secondary" data-action="note">Send</button>
+            </div>
+            <div class="room-note-status" data-note-status></div>
           </div>
         `).join('');
       }
@@ -245,12 +194,59 @@
       document.getElementById('progress-pct').textContent = `${pct}%`;
     }
 
+    // Keep drafts in sync as they're typed.
+    document.getElementById('room-list').addEventListener('input', (e) => {
+      const box = e.target.closest('textarea[data-note-input]');
+      if (!box) return;
+      const roomEl = box.closest('.room');
+      noteDrafts[roomEl.dataset.id] = box.value;
+    });
+
+    // Post one room's note to the shared notepad. The server stamps the room
+    // and the housekeeper's name onto the line, so the front desk sees
+    // "Room 203 (Maria): Toilet is broken".
+    async function sendRoomNote(roomEl, btn) {
+      const box = roomEl.querySelector('textarea[data-note-input]');
+      const status = roomEl.querySelector('[data-note-status]');
+      const note = (box.value || '').trim();
+      if (!note) return;
+      btn.disabled = true;
+      status.textContent = '';
+      try {
+        const res = await fetch(`${window.__API_BASE}/api/public/housekeeping/${PROPERTY}/shared-notes`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            note,
+            author: currentHousekeeper ? currentHousekeeper.name : '',
+            room: roomEl.dataset.room || '',
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || 'Could not send note');
+        }
+        box.value = '';
+        delete noteDrafts[roomEl.dataset.id];
+        status.textContent = 'Sent to the front desk.';
+        setTimeout(() => { status.textContent = ''; }, 4000);
+      } catch (err) {
+        showError(err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
     document.getElementById('room-list').addEventListener('click', async (e) => {
       const btn = e.target.closest('button[data-action]');
       if (!btn) return;
       const roomEl = btn.closest('.room');
       const id = roomEl.dataset.id;
       const action = btn.dataset.action;
+      if (action === 'note') {
+        await sendRoomNote(roomEl, btn);
+        return;
+      }
       btn.disabled = true;
       try {
         const res = await fetch(
@@ -276,14 +272,6 @@
       return String(s == null ? '' : s).replace(/[&<>"']/g, (c) =>
         ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
       );
-    }
-
-    // Lines from the public forms are stored as "Author: note" — show the
-    // author in bold. Dashboard lines without that shape render plain.
-    function formatNoteLine(line) {
-      const m = line.match(/^([^:]{1,40}):\s+([\s\S]+)$/);
-      if (m) return `<span class="note-author">${escapeHtml(m[1])}</span>${escapeHtml(m[2])}`;
-      return escapeHtml(line);
     }
 
     loadRoster();

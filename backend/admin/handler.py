@@ -190,7 +190,7 @@ def list_features(event, params):
 
 @router.put("/api/admin/features/{property_id}")
 def update_features(event, params):
-    """Owner-only. Body: {enabled: ["dinner","groups",...]}."""
+    """Owner-only. Body: {enabled: ["business_case","inspections",...]}."""
     err = authorize(event, [ROLE_OWNER])
     if err:
         return err

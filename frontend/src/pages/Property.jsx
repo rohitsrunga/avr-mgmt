@@ -17,7 +17,7 @@ const SEVERITY_MAP = Object.fromEntries(INSPECTION_SEVERITIES.map((s) => [s.id, 
 
 export default function Property() {
   const api = useApi()
-  const { propertyId, property } = useProperty()
+  const { propertyId } = useProperty()
   const { isEnabled } = useFeatureConfig()
   const inspEnabled = isEnabled('inspections', propertyId)
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10))
@@ -82,15 +82,14 @@ export default function Property() {
     <div className="space-y-6 fade-in">
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex-1">
-          <h1 className="page-title">Housekeeping &amp; Inspections</h1>
-          <p className="page-subtitle">{property?.name} · {allRoomNumbers.length} rooms · cleaning assignments, open issues, and shared notes on one screen.</p>
+          <h1 className="page-title">Housekeeping</h1>
         </div>
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="input max-w-[180px]" />
       </div>
 
       <div className="grid sm:grid-cols-2 gap-3">
-        {hkUrl && <CopyLink url={hkUrl} label="Housekeeper public form" />}
-        {inspUrl && <CopyLink url={inspUrl} label="Inspection walk-form" />}
+        {hkUrl && <CopyLink url={hkUrl} label="Housekeeping Assignments" />}
+        {inspUrl && <CopyLink url={inspUrl} label="Inspector Notes" />}
       </div>
 
       {error && <Banner tone="error">{error}</Banner>}
@@ -176,6 +175,23 @@ function CleaningView({ propertyId, date, roster, assignments, progress, allRoom
     return source.map(String).filter((rn) => !assignedRoomSet.has(rn)).sort((a, b) => Number(a) - Number(b))
   }, [cbConnected, cbRooms, allRoomNumbers, assignedRoomSet])
 
+  // Room numbers are floor-prefixed (101–134, 201–234, …), so the floor is
+  // everything but the last two digits. Anything that doesn't parse falls
+  // into a trailing "Other" group rather than disappearing.
+  const roomsByFloor = useMemo(() => {
+    const groups = new Map()
+    unassignedRooms.forEach((rn) => {
+      const floor = floorOf(rn)
+      if (!groups.has(floor)) groups.set(floor, [])
+      groups.get(floor).push(rn)
+    })
+    return Array.from(groups.entries()).sort((a, b) => {
+      if (a[0] === '?') return 1
+      if (b[0] === '?') return -1
+      return Number(a[0]) - Number(b[0])
+    })
+  }, [unassignedRooms])
+
   // Click-to-assign UX: pick a housekeeper container on the left, then
   // click rooms on the right to add them. Null = picker behaves like the
   // legacy text-input flow's "no target" — clicking a room opens the
@@ -204,8 +220,6 @@ function CleaningView({ propertyId, date, roster, assignments, progress, allRoom
 
   const totalAssigned = assignments.length
   const totalDone = assignments.filter((a) => a.status === 'done').length
-  const totalInProgress = assignments.filter((a) => a.status === 'in_progress').length
-  const totalPending = assignments.filter((a) => a.status === 'open').length
   const completionRate = totalAssigned > 0 ? Math.round((totalDone / totalAssigned) * 100) : 0
 
   async function setStatus(a, status) {
@@ -237,8 +251,6 @@ function CleaningView({ propertyId, date, roster, assignments, progress, allRoom
           completionRate={completionRate}
           totalAssigned={totalAssigned}
           totalDone={totalDone}
-          totalInProgress={totalInProgress}
-          totalPending={totalPending}
         />
         <NotesAndIssues propertyId={propertyId} />
       </div>
@@ -341,33 +353,42 @@ function CleaningView({ propertyId, date, roster, assignments, progress, allRoom
               {cbConnected ? 'Cloudbeds shows nothing needing cleaning today.' : 'Every room is assigned. Nice.'}
             </div>
           ) : (
-            <div className="flex flex-wrap gap-2 mt-3">
-              {unassignedRooms.map((rn) => {
-                const isDep = cbDepartures.has(rn)
-                const isDirty = cbDirty.has(rn)
-                const isInhouse = cbInhouse.has(rn)
-                const isClean = cbClean.has(rn)
-                const titleBits = []
-                if (isDep) titleBits.push('departing today')
-                if (isDirty) titleBits.push('Cloudbeds: dirty')
-                if (isInhouse) titleBits.push('in house (stayover)')
-                if (isClean) titleBits.push('clean & vacant')
-                const title = `Room ${rn}${titleBits.length ? ' · ' + titleBits.join(' · ') : ''}`
-                return (
-                  <PickerRoom
-                    key={rn}
-                    rn={rn}
-                    isDep={isDep}
-                    isDirty={isDirty}
-                    isInhouse={isInhouse}
-                    isClean={isClean}
-                    cbConnected={cbConnected}
-                    onClick={() => handleRoomClick(rn)}
-                    busy={busy}
-                    title={title}
-                  />
-                )
-              })}
+            <div className="mt-3 space-y-4">
+              {roomsByFloor.map(([floor, floorRooms]) => (
+                <div key={floor}>
+                  <div className="text-[11px] uppercase tracking-[0.06em] text-ink-faint mb-1.5">
+                    {floor === '?' ? 'Other' : `Floor ${floor}`}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                  {floorRooms.map((rn) => {
+                    const isDep = cbDepartures.has(rn)
+                    const isDirty = cbDirty.has(rn)
+                    const isInhouse = cbInhouse.has(rn)
+                    const isClean = cbClean.has(rn)
+                    const titleBits = []
+                    if (isDep) titleBits.push('departing today')
+                    if (isDirty) titleBits.push('Cloudbeds: dirty')
+                    if (isInhouse) titleBits.push('in house (stayover)')
+                    if (isClean) titleBits.push('clean & vacant')
+                    const title = `Room ${rn}${titleBits.length ? ' · ' + titleBits.join(' · ') : ''}`
+                    return (
+                      <PickerRoom
+                        key={rn}
+                        rn={rn}
+                        isDep={isDep}
+                        isDirty={isDirty}
+                        isInhouse={isInhouse}
+                        isClean={isClean}
+                        cbConnected={cbConnected}
+                        onClick={() => handleRoomClick(rn)}
+                        busy={busy}
+                        title={title}
+                      />
+                    )
+                  })}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </SectionCard>
@@ -455,32 +476,19 @@ function RoomChip({ assignment, onCycle, onRemove }) {
   )
 }
 
-// Consolidated cleaning-progress BAN. Sized to match the taller Open-issues
-// and Shared-notes cells beside it, so the breakdown rows fill the height.
-function CleaningBAN({ completionRate, totalAssigned, totalDone, totalInProgress, totalPending }) {
+// Consolidated cleaning-progress BAN: one container, one line of truth —
+// "20% (2/10) complete". The per-status breakdown lives on the housekeeper
+// cards below, so it isn't repeated here.
+function CleaningBAN({ completionRate, totalAssigned, totalDone }) {
   const toneClass = completionRate >= 80 ? 'text-positive' : 'text-brand'
-  const rows = [
-    { label: 'Rooms assigned', value: totalAssigned, tone: 'text-ink' },
-    { label: 'Done', value: totalDone, tone: 'text-positive' },
-    { label: 'In progress', value: totalInProgress, tone: 'text-brand' },
-    { label: 'Pending', value: totalPending, tone: totalPending > 0 ? 'text-warning' : 'text-ink-muted' },
-  ]
   return (
-    <div className="card h-full flex flex-col">
+    <div className="card h-full flex flex-col justify-center">
       <div className="text-[15px] font-semibold tracking-tight text-ink">Cleaning progress</div>
-      <div className="mt-2 flex items-baseline gap-2">
+      <div className="mt-2 flex items-baseline gap-2 flex-wrap">
         <span className={`text-[52px] leading-none font-semibold tracking-tight tabular-nums ${toneClass}`}>{completionRate}%</span>
-        <span className="text-[15px] text-ink-muted">complete</span>
+        <span className="text-[15px] text-ink-muted tabular-nums">({totalDone}/{totalAssigned}) complete</span>
       </div>
       <ProgressBar value={totalDone} max={Math.max(1, totalAssigned)} tone={completionRate >= 80 ? 'positive' : 'brand'} className="mt-4" />
-      <div className="mt-5 flex-1 flex flex-col justify-center divide-y divide-line-subtle">
-        {rows.map((r) => (
-          <div key={r.label} className="flex items-center justify-between py-3">
-            <span className="text-[15px] text-ink-body">{r.label}</span>
-            <span className={`text-[24px] font-semibold tabular-nums ${r.tone}`}>{r.value}</span>
-          </div>
-        ))}
-      </div>
     </div>
   )
 }
@@ -488,6 +496,13 @@ function CleaningBAN({ completionRate, totalAssigned, totalDone, totalInProgress
 /* ---------------------------------------------------------------------- */
 /* SHARED                                                                 */
 /* ---------------------------------------------------------------------- */
+
+// "203" → "2". Non-numeric or short room ids group under "?" ("Other").
+function floorOf(roomNumber) {
+  const digits = String(roomNumber).replace(/\D/g, '')
+  if (digits.length >= 3) return digits.slice(0, digits.length - 2)
+  return digits ? digits.slice(0, 1) : '?'
+}
 
 function timeAgo(iso) {
   if (!iso) return ''

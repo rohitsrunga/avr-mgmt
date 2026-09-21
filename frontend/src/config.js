@@ -22,9 +22,9 @@ export const SHIFTS = [
 // hidden inside the tab when their per-property toggle is off — the tab itself
 // is always visible to roles that have it in `tabs`.
 export const ROLES = [
-  { id: 'owner',        label: 'Owner',        tabs: ['property','checklists','marketing','inventory','admin'] },
-  { id: 'manager',      label: 'Manager',      tabs: ['property','checklists','marketing','inventory'] },
-  { id: 'frontdesk',    label: 'Front Desk',   tabs: ['property','checklists','marketing','inventory'] },
+  { id: 'owner',        label: 'Owner',        tabs: ['property','checklists','inventory','admin'] },
+  { id: 'manager',      label: 'Manager',      tabs: ['property','checklists','inventory'] },
+  { id: 'frontdesk',    label: 'Front Desk',   tabs: ['property','checklists','inventory'] },
   { id: 'housekeeping', label: 'Housekeeping', tabs: ['property','checklists'] },
   { id: 'grounds',      label: 'Grounds',      tabs: ['checklists'] },
   { id: 'breakfast',    label: 'Breakfast',    tabs: ['checklists','inventory'] },
@@ -66,17 +66,13 @@ export const ROOM_EQUIPMENT_FIELDS = [
 // Checklists.jsx — it is intentionally NOT a per-property toggle.
 export const TOGGLEABLE_FEATURES = [
   'business_case',
-  'groups',
   'inspections',
-  'finance_pnl',
 ]
 
 // Human-readable labels for the Admin feature toggle UI.
 export const FEATURE_LABELS = {
   business_case:  'Business Case',
-  groups:         'Group Contracts',
   inspections:    'Inspections',
-  finance_pnl:    'Budget Estimation',
 }
 
 // Dinner menu options (Casco Bay evening dinner program).
@@ -108,21 +104,6 @@ export const BUSINESS_CASE_TASKS = [
   { id: 'leisure',         label: 'Leisure',                        icon: '🌴' },
   { id: 'transient',       label: 'Transient',                      icon: '🚗' },
   { id: 'reply_reviews',   label: 'Reply All Reviews',              icon: '💬' },
-]
-
-// Group contract status + room-type vocab (mirrors backend).
-export const GROUP_STATUSES = [
-  { id: 'inquiry',    label: 'Inquiry',     tone: 'warning' },
-  { id: 'confirmed',  label: 'Confirmed',   tone: 'brand' },
-  { id: 'checked_in', label: 'Checked-in',  tone: 'positive' },
-  { id: 'completed',  label: 'Completed',   tone: 'neutral' },
-  { id: 'cancelled',  label: 'Cancelled',   tone: 'danger' },
-]
-export const GROUP_ROOM_TYPES = [
-  { id: 'standard', label: 'Standard' },
-  { id: 'triple',   label: 'Triple' },
-  { id: 'quad',     label: 'Quad' },
-  { id: 'mixed',    label: 'Mixed' },
 ]
 
 // Inspection vocab (also exposed by /meta/constants but cached here for SSR-style speed).

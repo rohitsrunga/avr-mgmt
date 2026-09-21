@@ -66,34 +66,31 @@ python3 scripts/setup_cognito.py --stack avr-mgmt --region us-east-1 \
 
 The authenticated SPA exposes these tabs (role-gated):
 
-| Tab              | Description                                                            | Roles |
-|------------------|------------------------------------------------------------------------|-------|
-| Overview         | Today's snapshot — shift progress, low-stock alerts, Park & Fly        | owner / manager / frontdesk |
-| Shift Checklist  | Daily shift tasks, handoff notes, plus breakfast & groundsman lists    | all (except some restricted by role) |
-| Inventory        | Stock + par levels, low-stock alerts. Includes the **Linen** category. | owner / manager / frontdesk / breakfast |
-| Rooms            | Per-room equipment audit and maintenance notes                         | owner / manager / frontdesk / housekeeping |
-| Housekeeping     | Roster + per-day room assignments. Surfaces the public form URL.       | owner / manager / frontdesk |
-| Dinner Orders    | Casco Bay only — evening dinner order queue. Surfaces the form URL.    | owner / manager / frontdesk |
-| Admin            | User management (Cognito)                                              | owner |
+| Tab          | Description                                                                                     | Roles |
+|--------------|--------------------------------------------------------------------------------------------------|-------|
+| Front Desk   | Daily shift tasks, handoff notes, breakfast & groundsman lists, dinner orders (Casco Bay)        | all (some sections restricted by role) |
+| Housekeeping | Cleaning progress, roster + per-day room assignments (grouped by floor), shared notes, inspections | owner / manager / frontdesk / housekeeping |
+| Inventory    | Stock + par levels, low-stock alerts. Includes the **Linen** category.                           | owner / manager / frontdesk / breakfast |
+| Admin        | User management (Cognito), employees, per-property feature toggles                                | owner |
 
 ## Public forms (no login)
 
 Two static pages on S3, branded for each property, no PII collected beyond what guests/housekeepers volunteer:
 
-- **Dinner order form (Casco Bay)** — `…/dinner.html?p=casco_bay`. Submits to `POST /api/public/dinner-orders/casco_bay`. Front-desk sees orders in real time in the Dinner Orders tab and checks them off as plates go out.
-- **Housekeeping form (both properties)** — `…/housekeeping.html?p=casco_bay` or `…/housekeeping.html?p=saco_bay`. Housekeeper picks her name from the dropdown, sees today's assigned rooms, taps "Done" as she finishes each. Managers assign rooms in the Housekeeping tab.
+- **Dinner order form (Casco Bay)** — `…/dinner.html?p=casco_bay`. Submits to `POST /api/public/dinner-orders/casco_bay`. Front-desk sees orders in real time in the Front Desk tab and checks them off as plates go out.
+- **Housekeeping form (both properties)** — `…/housekeeping.html?p=casco_bay` or `…/housekeeping.html?p=saco_bay`. The housekeeper picks their name from the dropdown, sees today's assigned rooms, and taps "Done" as each is finished. Each room card carries its own free-form note box; a note sent from it lands on the shared notepad stamped with its room and author — `Room 203 (Maria): Toilet is broken`. Managers assign rooms in the Housekeeping tab.
 
-The form URLs are printed by [`scripts/upload_forms.sh`](scripts/upload_forms.sh) and are also surfaced (copy-to-clipboard) in the respective dashboard tabs.
+The form URLs are printed by [`scripts/upload_forms.sh`](scripts/upload_forms.sh). In the dashboards they appear as named hyperlinks (Housekeeping Assignments, Inspector Notes, Guest Orders, Inventory Form) with a "Copy link" button — the raw URL is never printed in the UI.
 
 ## Roles
 | Role          | Tabs visible |
 |---------------|--------------|
 | owner         | All (incl. Admin) |
 | manager       | All except Admin |
-| frontdesk     | Overview, Shift Checklist, Inventory, Rooms, Housekeeping, Dinner Orders |
-| housekeeping  | Shift Checklist, Rooms (day-to-day housekeepers use the public form, not this login) |
-| grounds       | Shift Checklist |
-| breakfast     | Shift Checklist, Inventory |
+| frontdesk     | Front Desk, Housekeeping, Inventory |
+| housekeeping  | Front Desk, Housekeeping (day-to-day housekeepers use the public form, not this login) |
+| grounds       | Front Desk |
+| breakfast     | Front Desk, Inventory |
 
 Property scoping: `owner`/`manager` always see both properties. Other roles are tied to one property (`casco_bay` or `saco_bay`) or `both` via `custom:property` Cognito attribute.
 
@@ -104,18 +101,8 @@ Property scoping: `owner`/`manager` always see both properties. Other roles are 
 - **Edit shift task templates** — Shift Checklist tab → "Edit tasks" (owner/manager only).
 - **Add inventory items / linen categories** — Inventory tab → "Add item" (owner/manager only).
 - **Assign housekeeping rooms** — Housekeeping tab → pick a housekeeper from the roster, type the room numbers, press Assign. Housekeepers see their rooms in the public form within seconds.
-- **Process dinner orders** — Dinner Orders tab → open cards as they arrive, mark each "Made" when the plate is out.
+- **Process dinner orders** — Front Desk tab → open cards as they arrive, mark each "Made" when the plate is out.
 - **Push a new form change** — Edit `forms/dinner.html`, `forms/housekeeping.html`, or `forms/styles.css`, then `./scripts/upload_forms.sh`. No SAM redeploy needed.
-
-## Migrating from earlier versions
-
-If you previously had the standalone Linen tab, run the migration before re-deploying:
-
-```bash
-python3 scripts/migrate_linen_to_inventory.py --stack avr-mgmt --dry-run
-python3 scripts/migrate_linen_to_inventory.py --stack avr-mgmt
-sam deploy   # the now-removed Linen DynamoDB table will be deleted by CloudFormation
-```
 
 ## Cost notes
 - Target: $0–2/mo. Mostly free tier; CloudFront + small DynamoDB usage are the only ongoing costs after Year 1 free tier expires.

@@ -404,7 +404,7 @@ function DinnerOrders({ propertyId, date }) {
       className="w-full min-w-0 lg:max-h-[360px] flex flex-col min-h-0"
     >
       {error && <Banner tone="error">{error}</Banner>}
-      {formUrl && <div className="mb-3"><CopyLink url={formUrl} label="Guest order form" /></div>}
+      {formUrl && <div className="mb-3"><CopyLink url={formUrl} label="Guest Orders" /></div>}
       {orders.length === 0 ? (
         <div className="text-[14px] text-ink-muted py-10 text-center">No orders today.</div>
       ) : (

@@ -5,8 +5,7 @@ import { ROLES } from '../config'
 
 const ALL_TABS = [
   { id: 'checklists', to: '/app/checklists', label: 'Front Desk' },
-  { id: 'property',   to: '/app/property',   label: 'Housekeeping & Inspections' },
-  { id: 'marketing',  to: '/app/marketing',  label: 'Finance & Marketing' },
+  { id: 'property',   to: '/app/property',   label: 'Housekeeping' },
   { id: 'inventory',  to: '/app/inventory',  label: 'Inventory' },
   { id: 'admin',      to: '/app/admin',      label: 'Admin' },
 ]

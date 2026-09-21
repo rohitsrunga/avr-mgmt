@@ -236,7 +236,7 @@ function CreateEmployeeForm({ onSubmit, onCancel, busy }) {
 
 function InviteShareCard({ invite, onClose }) {
   const [copied, setCopied] = useState(false)
-  const url = invite.url || `(set VITE_PUBLIC_FORMS_BASE_URL to enable share link; token: ${invite.token})`
+  const url = invite.url
   async function copy() {
     try {
       await navigator.clipboard.writeText(url)
@@ -254,9 +254,17 @@ function InviteShareCard({ invite, onClose }) {
         </div>
         <button onClick={onClose} className="text-[13px] text-ink-body hover:text-ink">Dismiss</button>
       </div>
-      <div className="flex items-center gap-2">
-        <input className="input flex-1 font-mono text-[12px]" readOnly value={url} />
-        <button className="btn-primary" onClick={copy}>{copied ? 'Copied' : 'Copy'}</button>
+      <div className="flex items-center gap-3">
+        {url ? (
+          <a href={url} target="_blank" rel="noreferrer" className="flex-1 min-w-0 text-[14px] font-medium text-brand hover:underline truncate">
+            Onboarding Form <span aria-hidden="true">↗</span>
+          </a>
+        ) : (
+          <div className="flex-1 min-w-0 text-[13px] text-ink-muted">
+            Set VITE_PUBLIC_FORMS_BASE_URL to enable the share link (token: {invite.token})
+          </div>
+        )}
+        <button className="btn-primary" onClick={copy} disabled={!url}>{copied ? 'Copied' : 'Copy link'}</button>
       </div>
     </div>
   )
@@ -283,8 +291,14 @@ function HandbookShareButton() {
       <select className="select min-h-0 py-1.5 text-[13px]" value={property} onChange={(e) => setProperty(e.target.value)}>
         {PROPERTIES.map((p) => <option key={p.id} value={p.id}>{p.short}</option>)}
       </select>
-      <input className="input min-h-0 py-1.5 text-[12px] font-mono w-[260px]" readOnly value={url || '(no public-forms URL configured)'} />
-      <button className="btn-primary" onClick={copy} disabled={!url}>{copied ? 'Copied' : 'Copy'}</button>
+      {url ? (
+        <a href={url} target="_blank" rel="noreferrer" className="text-[14px] font-medium text-brand hover:underline truncate">
+          Employee Handbook <span aria-hidden="true">↗</span>
+        </a>
+      ) : (
+        <span className="text-[13px] text-ink-muted">No public-forms URL configured</span>
+      )}
+      <button className="btn-primary" onClick={copy} disabled={!url}>{copied ? 'Copied' : 'Copy link'}</button>
       <button className="text-[13px] text-ink-body hover:text-ink" onClick={() => setOpen(false)}>Close</button>
     </div>
   )

@@ -215,13 +215,26 @@ def public_add_shared_note(event, params):
     if err:
         return err
     body = parse_body(event)
-    note = (body.get("note") or "").strip()[:280]
-    author = (body.get("author") or "").strip()[:80]
+    # The pad is newline-delimited, so a note carrying its own newlines could
+    # forge extra lines — collapse all whitespace into single spaces.
+    note = " ".join(str(body.get("note") or "").split())[:280]
+    author = " ".join(str(body.get("author") or "").split())[:80]
+    # Optional room context from the per-room note boxes on the housekeeping
+    # form. Alphanumeric only (room numbers), so a hostile client can't inject
+    # line breaks or fake a different author into the notepad.
+    room = re.sub(r"[^A-Za-z0-9-]", "", str(body.get("room") or ""))[:10]
     if not note:
         return bad_request("note required")
     key = {"PK": f"PROPERTY#{pid}", "SK": "SHARED_NOTES"}
     current = (TBL().get_item(Key=key).get("Item") or {}).get("notes", "")
-    line = f"{author}: {note}" if author else note
+    if room and author:
+        line = f"Room {room} ({author}): {note}"
+    elif room:
+        line = f"Room {room}: {note}"
+    elif author:
+        line = f"{author}: {note}"
+    else:
+        line = note
     next_notes = (current + "\n" + line if current.strip() else line)[:5000]
     updated_at = _now()
     updated_by = author or "Staff form"
