@@ -377,6 +377,70 @@ button.btn.block {
   flex-shrink: 0;
 }
 
+/* Stock-check form: -/+ stepper around the count. Silk on the Fire tablets
+   draws no native spinners, so the buttons are the only affordance — keep
+   them at a 44px tap target. */
+.stepper {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.stepper button.step {
+  width: 44px;
+  min-height: 44px;
+  border: none;
+  background: var(--surface-muted);
+  color: var(--ink);
+  font-size: 22px;
+  font-family: inherit;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.stepper button.step:active {
+  background: var(--surface-sunken);
+}
+
+.stepper input {
+  width: 62px;
+  min-width: 0;
+  border: none;
+  border-left: 1px solid var(--line-subtle);
+  border-right: 1px solid var(--line-subtle);
+  padding: 8px 6px;
+  font-size: 17px;
+  font-family: inherit;
+  text-align: center;
+  color: var(--ink);
+  outline: none;
+  background: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.stepper input:focus {
+  box-shadow: inset 0 0 0 2px var(--brand);
+}
+
+/* Our buttons replace the native spinners everywhere, so hide those. */
+.stepper input::-webkit-outer-spin-button,
+.stepper input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.stepper input {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 /* Housekeeping form: each room is a card with its own free-form note box.
    Scoped to .room-card so the flat .room rows in inventory.html keep theirs. */
 .room.room-card {

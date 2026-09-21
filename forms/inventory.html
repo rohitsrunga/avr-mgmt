@@ -173,36 +173,57 @@
               <div>${nameHtml}</div>
               <div class="notes">Typical: ${it.par_level} ${escapeHtml(unitLabel(it.unit, it.par_level))} · <span style="color:${statusColor}">${status}</span></div>
             </div>
-            <input
-              type="number"
-              min="0"
-              inputmode="numeric"
-              value="${it.current_stock}"
-              data-original="${it.current_stock}"
-              data-id="${it.item_id}"
-              data-category="${it.category}"
-              style="width: 80px; padding: 8px 10px; font-size: 16px; text-align: right; border: 1px solid var(--line); border-radius: 10px; font-family: inherit;"
-            />
+            <div class="stepper">
+              <button type="button" class="step" data-step="-1" aria-label="One less ${escapeHtml(it.item_name)}">−</button>
+              <input
+                type="number"
+                min="0"
+                inputmode="numeric"
+                value="${it.current_stock}"
+                data-original="${it.current_stock}"
+                data-id="${it.item_id}"
+                data-category="${it.category}"
+                aria-label="Count of ${escapeHtml(it.item_name)}"
+              />
+              <button type="button" class="step" data-step="1" aria-label="One more ${escapeHtml(it.item_name)}">+</button>
+            </div>
           </div>
         `;
       }).join('');
       list.querySelectorAll('input[type=number]').forEach((inp) => {
-        inp.addEventListener('input', () => {
-          const id = inp.dataset.id;
-          const original = Number(inp.dataset.original);
-          const v = Number(inp.value);
-          if (Number.isFinite(v) && v !== original) {
-            overrides[id] = { item_id: id, category: inp.dataset.category, current_quantity: Math.max(0, v) };
-          } else {
-            delete overrides[id];
-          }
-          updateSaveButton();
-        });
+        inp.addEventListener('input', () => recordCount(inp));
       });
       document.getElementById('items-card').classList.remove('hidden');
       window.scrollTo({ top: document.getElementById('items-card').offsetTop - 16, behavior: 'smooth' });
       updateSaveButton();
     }
+
+    // Typing and the -/+ buttons both land here, so a count changed either
+    // way is staged (or un-staged, when it's back at the original) the same.
+    function recordCount(inp) {
+      const id = inp.dataset.id;
+      const original = Number(inp.dataset.original);
+      const v = Number(inp.value);
+      if (Number.isFinite(v) && v !== original) {
+        overrides[id] = { item_id: id, category: inp.dataset.category, current_quantity: Math.max(0, v) };
+      } else {
+        delete overrides[id];
+      }
+      updateSaveButton();
+    }
+
+    // Silk on the Fire tablets draws no spinners on a number input, so the
+    // count needs real buttons. Delegated, since the list re-renders per
+    // category.
+    document.getElementById('items-list').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-step]');
+      if (!btn) return;
+      const inp = btn.parentElement.querySelector('input[type=number]');
+      if (!inp) return;
+      const next = Math.max(0, (Number(inp.value) || 0) + Number(btn.dataset.step));
+      inp.value = String(next);
+      recordCount(inp);
+    });
 
     function updateSaveButton() {
       const btn = document.getElementById('save-btn');
